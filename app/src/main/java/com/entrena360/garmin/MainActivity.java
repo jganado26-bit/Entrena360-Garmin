@@ -35,9 +35,16 @@ public class MainActivity extends ComponentActivity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        webView.setWebViewClient(new WebViewClient());
         healthSyncBridge = new HealthSyncBridge(this, webView);
         webView.addJavascriptInterface(healthSyncBridge, "EntrenaHealth");
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                injectHealthConnectUi();
+                if (healthSyncBridge != null) healthSyncBridge.autoSyncIfPossible();
+            }
+        });
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -55,6 +62,16 @@ public class MainActivity extends ComponentActivity {
         });
 
         webView.loadUrl("file:///android_asset/index.html");
+    }
+
+    private void injectHealthConnectUi() {
+        String js = "(function(){if(document.getElementById('garminSync'))return;" +
+                "var link=document.createElement('link');link.rel='stylesheet';link.href='health-connect.css';document.head.appendChild(link);" +
+                "var s=document.createElement('section');s.id='garminSync';s.className='card health-card';" +
+                "s.innerHTML=\"<div class='health-head'><div class='health-title'><div class='health-icon'>⌚</div><div><div class='status-row'><span id='healthConnectDot' class='dot medium'></span><strong id='healthConnectStatus'>Comprobando conexión</strong></div><h2>Sincronización automática Garmin</h2><p id='healthConnectDetail'>Preparando Health Connect…</p></div></div><div class='health-actions'><button id='healthConnectBtn' class='primary'>Conectar</button><button id='healthSyncBtn' class='ghost'>Sincronizar ahora</button></div></div><div class='health-meta'><div><span>Última sincronización</span><strong id='healthLastSync'>—</strong></div><div><span>Pasos hoy</span><strong id='healthSteps'>—</strong></div><div><span>Fuente</span><strong>Garmin → Health Connect</strong></div></div><div class='health-explain'>Después de autorizar una vez, Entrena360 comprueba datos nuevos al abrir o volver a la app. Garmin Connect debe haber sincronizado primero el reloj.</div>\";" +
+                "var main=document.querySelector('main');var info=main&&main.querySelector('.info');if(main){if(info)main.insertBefore(s,info);else main.appendChild(s);}" +
+                "var sc=document.createElement('script');sc.src='health-connect.js';document.body.appendChild(sc);})();";
+        webView.evaluateJavascript(js, null);
     }
 
     @Override
