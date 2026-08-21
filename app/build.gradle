@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace 'com.entrena360.garmin'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.entrena360.garmin"
