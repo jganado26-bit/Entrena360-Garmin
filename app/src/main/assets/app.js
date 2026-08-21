@@ -1,35 +1,1016 @@
-const KEY='entrena360.activities.v2',REC='entrena360.recovery.v2',PROFILE='entrena360.profile.v1';
-let activities=JSON.parse(localStorage.getItem(KEY)||'[]');
-const $=s=>document.querySelector(s),mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
-const toast=t=>{const e=$('#toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2200)};
-const fmtDate=d=>new Intl.DateTimeFormat('es-ES',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(d));
-const dur=s=>{s=Math.max(0,Math.round(s||0));return `${Math.floor(s/3600)?Math.floor(s/3600)+'h ':''}${Math.floor((s%3600)/60)}m`};
-const pace=(sec,km)=>!km||!sec?'—':`${Math.floor(sec/km/60)}:${String(Math.round(sec/km)%60).padStart(2,'0')}/km`;
-const icon=s=>/run/i.test(s)?'🏃':/cycl|bike/i.test(s)?'🚴':/strength|fitness|gym/i.test(s)?'🏋️':/swim|nat/i.test(s)?'🏊':'⌁';
-function startOfDaysAgo(n){let d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-n);return d}
-function recoveryData(){return JSON.parse(localStorage.getItem(REC)||'{}')}
-function profile(){return JSON.parse(localStorage.getItem(PROFILE)||'{"maxHr":185,"restHr":55,"weight":75}')}
-function calcLoad(a){const mins=(a.duration||0)/60;if(!mins)return 0;const p=profile();let intensity=.62;if(a.avgHr&&p.maxHr&&p.restHr)intensity=Math.max(.35,Math.min(1.15,(a.avgHr-p.restHr)/(p.maxHr-p.restHr)));else if(a.avgHr)intensity=Math.max(.4,Math.min(1,(a.avgHr-50)/140));const sf=/run/i.test(a.sport)?1.12:/cycl/i.test(a.sport)?.92:/fitness/i.test(a.sport)?.8:1;return Math.round(mins*intensity*1.35*sf)}
-function readiness(){const r=recoveryData(),recent=activities.filter(a=>new Date(a.date)>=startOfDaysAgo(2));const load48=recent.reduce((s,a)=>s+calcLoad(a),0);let score=72;if(r.sleep!=null)score+=(r.sleep-70)*.24;if(r.battery!=null)score+=(r.battery-60)*.24;if(r.stress!=null)score-=(r.stress-30)*.13;if(r.sleepHours!=null)score+=(r.sleepHours-7)*3;if(r.hrv!=null)score+=(r.hrv-45)*.08;score-=Math.max(0,load48-105)*.13;score=Math.round(Math.max(20,Math.min(98,score)));let text='Preparado para entrenar',reason='Carga estable y recuperación correcta.',cls='good',rec='Hoy: sesión normal o de calidad controlada.';if(score<50){text='Mejor recuperar';reason='La combinación de carga y recuperación aconseja bajar claramente el ritmo.';cls='bad';rec='Hoy: descanso, paseo o sesión muy suave.'}else if(score<68){text='Entrenamiento moderado';reason='Puedes entrenar, pero conviene evitar una sesión muy exigente.';cls='medium';rec='Hoy: rodaje suave, técnica, fuerza ligera o bici tranquila.'}return{score,text,reason,cls,rec}}
-function acwr(){const acute=activities.filter(a=>new Date(a.date)>=startOfDaysAgo(7)).reduce((s,a)=>s+calcLoad(a),0),chronic=activities.filter(a=>new Date(a.date)>=startOfDaysAgo(28)).reduce((s,a)=>s+calcLoad(a),0)/4;return{acute,chronic,ratio:chronic?acute/chronic:null}}
-function render(){activities.sort((a,b)=>new Date(b.date)-new Date(a.date));localStorage.setItem(KEY,JSON.stringify(activities));const w=activities.filter(a=>new Date(a.date)>=startOfDaysAgo(7)),m=activities.filter(a=>new Date(a.date)>=startOfDaysAgo(28));$('#weekKm').textContent=w.reduce((s,a)=>s+(a.distanceKm||0),0).toFixed(1)+' km';$('#weekLoad').textContent=w.reduce((s,a)=>s+calcLoad(a),0);$('#monthLoad').textContent=m.reduce((s,a)=>s+calcLoad(a),0);$('#weekSessions').textContent=w.length;const rr=readiness();$('#readinessScore').textContent=rr.score;$('#readinessText').textContent=rr.text;$('#readinessReason').textContent=rr.reason;$('#todayRecommendation').textContent=rr.rec;$('#statusDot').className='dot '+rr.cls;$('#recovery').textContent=rr.score>=68?'Buena':rr.score>=50?'Media':'Baja';const ar=acwr();$('#acwr').textContent=ar.ratio?ar.ratio.toFixed(2):'—';renderLast();renderHistory();renderChart();renderZones();renderTrends()}
-function renderLast(){const a=activities[0],box=$('#lastActivity');if(!a){box.className='activity-empty';box.innerHTML='<div class="big-icon">⌁</div><p>Admite <b>FIT</b>, <b>TCX</b> y CSV.</p>';$('#lastSubtitle').textContent='Importa una actividad para comenzar.';return}$('#lastSubtitle').textContent=`${fmtDate(a.date)} · ${a.sport||'Actividad'}`;box.className='';box.innerHTML=`<div class="activity-grid"><div><small>Distancia</small><strong>${(a.distanceKm||0).toFixed(2)} km</strong></div><div><small>Tiempo</small><strong>${dur(a.duration)}</strong></div><div><small>Ritmo</small><strong>${pace(a.duration,a.distanceKm)}</strong></div><div><small>FC media</small><strong>${a.avgHr?Math.round(a.avgHr)+' ppm':'—'}</strong></div><div><small>Cadencia</small><strong>${a.avgCadence?Math.round(a.avgCadence):'—'}</strong></div><div><small>Potencia</small><strong>${a.avgPower?Math.round(a.avgPower)+' W':'—'}</strong></div><div><small>FC máxima</small><strong>${a.maxHr?Math.round(a.maxHr)+' ppm':'—'}</strong></div><div><small>Desnivel +</small><strong>${a.ascent?Math.round(a.ascent)+' m':'—'}</strong></div><div><small>Calorías</small><strong>${a.calories?Math.round(a.calories):'—'}</strong></div><div><small>Carga</small><strong>${calcLoad(a)}</strong></div><div><small>Velocidad media</small><strong>${a.avgSpeed?(a.avgSpeed*3.6).toFixed(1)+' km/h':'—'}</strong></div><div><small>Fuente</small><strong>${a.source||'—'}</strong></div></div>`}
-function hrZoneRanges(){const p=profile(),rest=p.restHr||55,max=p.maxHr||185,res=max-rest;return[{name:'Z1 Recuperación',lo:rest+.5*res,hi:rest+.6*res},{name:'Z2 Suave',lo:rest+.6*res,hi:rest+.7*res},{name:'Z3 Aeróbica',lo:rest+.7*res,hi:rest+.8*res},{name:'Z4 Umbral',lo:rest+.8*res,hi:rest+.9*res},{name:'Z5 Alta',lo:rest+.9*res,hi:max+1}]}
-function renderZones(){const a=activities[0],box=$('#hrZones');if(!a||!a.hrSamples||!a.hrSamples.length){box.className='zones-empty';box.textContent='Necesito una actividad FIT/TCX con muestras de frecuencia cardiaca.';return}const zones=hrZoneRanges(),counts=zones.map(()=>0),total=a.hrSamples.length;a.hrSamples.forEach(h=>{const i=zones.findIndex(z=>h>=z.lo&&h<z.hi);if(i>=0)counts[i]++});box.className='';box.innerHTML=zones.map((z,i)=>{const pct=Math.round(counts[i]/total*100);return `<div class="zone-row"><div class="zone-label"><span>${z.name} · ${Math.round(z.lo)}-${Math.round(z.hi-1)} ppm</span><b>${pct}%</b></div><div class="bar"><i style="width:${pct}%"></i></div></div>`}).join('')}
-function renderHistory(){const box=$('#history'),filter=$('#sportFilter').value;let list=activities;if(filter!=='all')list=activities.filter(a=>(a.sport||'').includes(filter));if(!list.length){box.innerHTML='<div class="activity-empty">No hay entrenamientos para este filtro.</div>';return}box.innerHTML=list.slice(0,50).map(a=>`<div class="history-item"><div class="history-main"><div class="sport">${icon(a.sport)}</div><div><h3>${a.name||a.sport||'Actividad'}</h3><p>${fmtDate(a.date)} · ${dur(a.duration)}${a.avgHr?' · '+Math.round(a.avgHr)+' ppm':''}${a.avgPower?' · '+Math.round(a.avgPower)+' W':''}</p></div></div><div class="history-right"><strong>${(a.distanceKm||0).toFixed(2)} km</strong><small>carga ${calcLoad(a)}</small></div></div>`).join('')}
-function renderChart(){const days=28,vals=[];for(let i=days-1;i>=0;i--){const d=startOfDaysAgo(i),next=new Date(d);next.setDate(next.getDate()+1);vals.push(activities.filter(a=>new Date(a.date)>=d&&new Date(a.date)<next).reduce((s,a)=>s+calcLoad(a),0))}const max=Math.max(20,...vals),W=800,H=170,pad=14,pts=vals.map((v,i)=>`${pad+i*(W-pad*2)/(days-1)},${H-pad-v*(H-pad*2)/max}`).join(' '),area=`${pad},${H-pad} ${pts} ${W-pad},${H-pad}`;$('#loadChart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line class="grid" x1="${pad}" x2="${W-pad}" y1="${H*.33}" y2="${H*.33}"/><line class="grid" x1="${pad}" x2="${W-pad}" y1="${H*.66}" y2="${H*.66}"/><polygon class="area" points="${area}"/><polyline class="line" points="${pts}"/></svg>`;const ar=acwr();let label='sin datos';if(ar.ratio)label=`A:C ${ar.ratio.toFixed(2)} · `+(ar.ratio<.8?'carga baja':ar.ratio<=1.3?'equilibrada':ar.ratio<=1.5?'alta':'muy alta');$('#trendBadge').textContent=label}
-function renderTrends(){const list=activities.filter(a=>new Date(a.date)>=startOfDaysAgo(42)),runs=list.filter(a=>/run/i.test(a.sport)&&a.distanceKm>1),bikes=list.filter(a=>/cycl/i.test(a.sport)),paces=runs.map(a=>a.duration/a.distanceKm).filter(Boolean),hrs=runs.map(a=>a.avgHr).filter(Boolean),powers=bikes.map(a=>a.avgPower).filter(Boolean),elev=list.filter(a=>new Date(a.date)>=startOfDaysAgo(7)).reduce((s,a)=>s+(a.ascent||0),0);$('#runningPaceTrend').textContent=paces.length?pace(mean(paces),1):'—';$('#runningHrTrend').textContent=hrs.length?Math.round(mean(hrs))+' ppm':'—';$('#cyclingPowerTrend').textContent=powers.length?Math.round(mean(powers))+' W':'—';$('#elevationTrend').textContent=Math.round(elev)+' m'}
-function decodeVal(dv,off,size,base,le){const t=base&31;if(!size)return null;try{if(t===0||t===2||t===10||t===13)return dv.getUint8(off);if(t===1)return dv.getInt8(off);if(t===3)return dv.getInt16(off,le);if(t===4||t===11)return dv.getUint16(off,le);if(t===5)return dv.getInt32(off,le);if(t===6||t===12)return dv.getUint32(off,le);if(t===8)return dv.getFloat32(off,le);if(t===9)return dv.getFloat64(off,le)}catch(e){}return null}
-const sportNames={0:'Genérico',1:'Running',2:'Ciclismo',4:'Fitness',5:'Natación',10:'Entrenamiento',11:'Caminata',15:'Senderismo'};const fitDate=x=>new Date((x+631065600)*1000).toISOString();
-function parseFIT(buf,name){const dv=new DataView(buf);if(dv.byteLength<12)throw Error('FIT incompleto');const hs=dv.getUint8(0),dataSize=dv.getUint32(4,true),sig=String.fromCharCode(...new Uint8Array(buf,8,4));if(sig!=='.FIT')throw Error('No parece un FIT válido');let p=hs,end=Math.min(dv.byteLength,p+dataSize),defs={},sessions=[],records=[];while(p<end){const hdr=dv.getUint8(p++);let local,compressed=false;if(hdr&128){compressed=true;local=(hdr>>5)&3}else local=hdr&15;if(!compressed&&(hdr&64)){if(p+5>end)break;p++;const arch=dv.getUint8(p++),le=arch===0,global=dv.getUint16(p,le);p+=2;const n=dv.getUint8(p++);let fields=[];for(let i=0;i<n;i++){if(p+3>end)break;fields.push({num:dv.getUint8(p++),size:dv.getUint8(p++),base:dv.getUint8(p++)})}defs[local]={global,le,fields};if(hdr&32){const nd=dv.getUint8(p++);p+=nd*3}}else{const def=defs[local];if(!def)break;let obj={global:def.global};for(const f of def.fields){if(p+f.size>end){p=end;break}let val;if((f.base&31)===7)val=new TextDecoder().decode(new Uint8Array(buf,p,f.size)).replace(/\0/g,'');else val=decodeVal(dv,p,f.size,f.base,def.le);obj[f.num]=val;p+=f.size}if(obj.global===18)sessions.push(obj);if(obj.global===20)records.push(obj)}}const s=sessions[sessions.length-1];if(!s)throw Error('No encontré el resumen de sesión');const hrs=records.map(r=>r[3]).filter(v=>v&&v<255),powers=records.map(r=>r[7]).filter(v=>v&&v<65000),cads=records.map(r=>r[4]).filter(v=>v&&v<255),speeds=records.map(r=>r[6]).filter(v=>v&&v<65000).map(v=>v/1000);return{name:name.replace(/\.fit$/i,''),sport:sportNames[s[5]]||'Actividad',date:s[2]!=null?fitDate(s[2]):new Date().toISOString(),duration:(s[8]||s[7]||0)/1000,distanceKm:(s[9]||0)/100000,avgSpeed:s[14]!=null?s[14]/1000:mean(speeds),avgHr:s[16]||mean(hrs),maxHr:s[17]||Math.max(...hrs,0)||null,avgCadence:s[18]||mean(cads),avgPower:s[20]||mean(powers),ascent:s[22]||null,calories:s[11]||null,hrSamples:hrs,source:'FIT'}}
-function txt(el,tag){const n=el.getElementsByTagName(tag)[0];return n?n.textContent:null}
-function parseTCX(text,name){const x=new DOMParser().parseFromString(text,'application/xml'),act=x.getElementsByTagName('Activity')[0];if(!act)throw Error('TCX sin actividad');const sport=act.getAttribute('Sport')||'Actividad',laps=[...x.getElementsByTagName('Lap')],duration=laps.reduce((s,l)=>s+(+txt(l,'TotalTimeSeconds')||0),0),meters=laps.reduce((s,l)=>s+(+txt(l,'DistanceMeters')||0),0),hrs=[...x.getElementsByTagName('HeartRateBpm')].map(e=>+(txt(e,'Value')||0)).filter(Boolean);return{name:name.replace(/\.tcx$/i,''),sport,date:txt(act,'Id')||new Date().toISOString(),duration,distanceKm:meters/1000,avgHr:mean(hrs),maxHr:Math.max(...hrs,0)||null,hrSamples:hrs,source:'TCX'}}
-function parseCSV(text,name){const rows=text.trim().split(/\r?\n/);if(rows.length<2)throw Error('CSV vacío');const sep=rows[0].includes(';')?';':',',h=rows[0].split(sep).map(x=>x.trim().toLowerCase()),r=rows[1].split(sep).map(x=>x.trim()),get=(...names)=>{for(const n of names){const i=h.indexOf(n);if(i>=0)return r[i]}return null};return{name:get('name','nombre')||name.replace(/\.csv$/i,''),sport:get('sport','deporte','activity type')||'Actividad',date:get('date','fecha','start time')||new Date().toISOString(),duration:+get('duration','duracion','duration_seconds')||0,distanceKm:+get('distance_km','distancia_km','distance')||0,avgHr:+get('avg_hr','fc_media','average heart rate')||null,avgCadence:+get('avg_cadence','cadencia')||null,avgPower:+get('avg_power','potencia')||null,ascent:+get('ascent','desnivel','elevation gain')||null,source:'CSV'}}
-async function importFile(file){let a;if(/\.fit$/i.test(file.name))a=parseFIT(await file.arrayBuffer(),file.name);else if(/\.tcx$/i.test(file.name))a=parseTCX(await file.text(),file.name);else if(/\.csv$/i.test(file.name))a=parseCSV(await file.text(),file.name);else throw Error('Formato no compatible');activities.unshift(a)}
-$('#importBtn').onclick=()=>$('#fileInput').click();$('#fileInput').onchange=async e=>{const files=[...e.target.files];let ok=0,fail=0;for(const f of files){try{await importFile(f);ok++}catch(err){console.error(err);fail++}}render();toast(`${ok} actividad(es) importada(s)${fail?' · '+fail+' con error':''}`);e.target.value=''};$('#sportFilter').onchange=renderHistory;
-$('#saveRecovery').onclick=()=>{localStorage.setItem(REC,JSON.stringify({sleep:+$('#sleepScore').value||null,battery:+$('#bodyBattery').value||null,hrv:+$('#hrv').value||null,rest:+$('#restingHr').value||null,stress:+$('#stress').value||null,sleepHours:+$('#sleepHours').value||null,date:new Date().toISOString()}));render();toast('Recuperación guardada')};
-$('#saveProfile').onclick=()=>{localStorage.setItem(PROFILE,JSON.stringify({maxHr:+$('#maxHr').value||185,restHr:+$('#profileRestHr').value||55,weight:+$('#weight').value||75}));render();toast('Perfil guardado')};
-$('#exportBtn').onclick=()=>{const blob=new Blob([JSON.stringify({activities,recovery:recoveryData(),profile:profile()},null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='entrena360_backup.json';a.click();URL.revokeObjectURL(u)};
-$('#clearBtn').onclick=()=>{if(confirm('¿Borrar todas las actividades y datos guardados?')){activities=[];localStorage.removeItem(KEY);localStorage.removeItem(REC);render();toast('Datos borrados')}};
-$('#demoBtn').onclick=()=>{const now=new Date();activities=[{name:'Rodaje suave',sport:'Running',date:new Date(now-86400000).toISOString(),duration:3180,distanceKm:9.2,avgHr:142,maxHr:158,avgCadence:166,ascent:86,calories:610,hrSamples:[128,132,138,142,145,148,151,147,143,139]},{name:'Bici MTB',sport:'Ciclismo',date:new Date(now-3*86400000).toISOString(),duration:4860,distanceKm:27.4,avgHr:136,maxHr:164,avgPower:172,avgCadence:78,ascent:420,calories:790,hrSamples:[118,124,132,139,144,151,148,136,128]},{name:'Series 6×800',sport:'Running',date:new Date(now-5*86400000).toISOString(),duration:3540,distanceKm:10.4,avgHr:157,maxHr:178,avgCadence:174,ascent:54,calories:730,hrSamples:[134,145,158,166,174,171,160,155,169,176]}];render();toast('Ejemplo cargado')};
-const rd=recoveryData();if(rd.sleep)$('#sleepScore').value=rd.sleep;if(rd.battery)$('#bodyBattery').value=rd.battery;if(rd.hrv)$('#hrv').value=rd.hrv;if(rd.rest)$('#restingHr').value=rd.rest;if(rd.stress)$('#stress').value=rd.stress;if(rd.sleepHours)$('#sleepHours').value=rd.sleepHours;const pf=profile();$('#maxHr').value=pf.maxHr||185;$('#profileRestHr').value=pf.restHr||55;$('#weight').value=pf.weight||75;render();
+"use strict";
+
+const STORAGE_KEY = "territorio360-state-v1";
+const CELL_SIZE = 0.001;
+const DEFAULT_CENTER = [41.5035, -5.7460];
+const MAX_TRACK_POINTS = 5000;
+
+const MODE_DATA = {
+  run:  { label: "Correr",    icon: "🏃", color: "#c9f35b", multiplier: 1,    maxSpeed: 12 },
+  walk: { label: "Caminar",   icon: "🥾", color: "#ffca69", multiplier: 1.1,  maxSpeed: 7 },
+  bike: { label: "Bicicleta", icon: "🚴", color: "#6fc4ff", multiplier: 0.58, maxSpeed: 30 },
+  swim: { label: "Nadar",     icon: "🏊", color: "#45b9f3", multiplier: 1.4,  maxSpeed: 5 }
+};
+
+const ENVIRONMENT_DATA = {
+  urban: "Urbano",
+  country: "Campo y caminos",
+  forest: "Bosque",
+  mountain: "Montaña",
+  coast: "Costa",
+  water: "Río, lago o piscina"
+};
+
+const WAYPOINT_DATA = {
+  treasure: { label: "Tesoro", icon: "🧭" },
+  viewpoint: { label: "Mirador", icon: "🔭" },
+  nature: { label: "Naturaleza", icon: "🌿" },
+  history: { label: "Lugar histórico", icon: "🏛️" },
+  water: { label: "Rincón de agua", icon: "💧" }
+};
+
+const BADGES = [
+  { id: "first", icon: "🚩", name: "Primer paso", detail: "5 parcelas", test: s => claimedCount(s) >= 5 },
+  { id: "mapmaker", icon: "🗺️", name: "Cartógrafo", detail: "25 parcelas", test: s => claimedCount(s) >= 25 },
+  { id: "century", icon: "💯", name: "Gran dominio", detail: "100 parcelas", test: s => claimedCount(s) >= 100 },
+  { id: "allrounder", icon: "🧩", name: "Todoterreno", detail: "4 modalidades", test: s => usedModes(s).size >= 4 },
+  { id: "wanderer", icon: "🌍", name: "Sin fronteras", detail: "3 entornos", test: s => usedEnvironments(s).size >= 3 },
+  { id: "seeker", icon: "✨", name: "Buscador", detail: "3 hallazgos", test: s => discoveredCount(s) >= 3 }
+];
+
+let state = loadState();
+let map;
+let territoryLayer;
+let waypointLayer;
+let activeRoute;
+let positionMarker;
+let accuracyCircle;
+let watchId = null;
+let timerId = null;
+let installPrompt = null;
+let pendingWaypointPosition = null;
+let demoTimer = null;
+let toastTimer = null;
+let drawnCellIds = new Set();
+
+const $ = selector => document.querySelector(selector);
+const $$ = selector => [...document.querySelectorAll(selector)];
+
+document.addEventListener("DOMContentLoaded", init);
+
+function init() {
+  if (typeof L === "undefined") {
+    showToast("No se pudo cargar el mapa. Comprueba la conexión.");
+    return;
+  }
+
+  setupMap();
+  bindEvents();
+  renderAll();
+  restoreActiveSession();
+  registerServiceWorker();
+}
+
+function defaultState() {
+  return {
+    version: 1,
+    profile: { name: "Jesús" },
+    claimed: {},
+    activities: [],
+    waypoints: [],
+    active: null
+  };
+}
+
+function loadState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!parsed || typeof parsed !== "object") return defaultState();
+    const clean = defaultState();
+    return {
+      ...clean,
+      ...parsed,
+      profile: { ...clean.profile, ...(parsed.profile || {}) },
+      claimed: parsed.claimed && typeof parsed.claimed === "object" ? parsed.claimed : {},
+      activities: Array.isArray(parsed.activities) ? parsed.activities : [],
+      waypoints: Array.isArray(parsed.waypoints) ? parsed.waypoints : []
+    };
+  } catch {
+    return defaultState();
+  }
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.error(error);
+    showToast("No queda espacio para guardar más recorridos en este dispositivo.");
+  }
+}
+
+function setupMap() {
+  map = L.map("map", {
+    center: DEFAULT_CENTER,
+    zoom: 14,
+    zoomControl: false,
+    preferCanvas: true
+  });
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a>"
+  }).addTo(map);
+
+  L.control.zoom({ position: "topright" }).addTo(map);
+  territoryLayer = L.layerGroup().addTo(map);
+  waypointLayer = L.layerGroup().addTo(map);
+  activeRoute = L.polyline([], { color: "#f4fff9", weight: 5, opacity: .92, lineCap: "round" }).addTo(map);
+
+  map.on("contextmenu", event => openWaypointDialog(event.latlng));
+}
+
+function bindEvents() {
+  $$(".bottom-nav button").forEach(button => button.addEventListener("click", () => showView(button.dataset.target)));
+  $("#openStartButton").addEventListener("click", () => $("#startDialog").showModal());
+  $("#startForm").addEventListener("submit", handleStartForm);
+  $("#pauseButton").addEventListener("click", togglePause);
+  $("#stopButton").addEventListener("click", () => finalizeActiveActivity());
+  $("#locateButton").addEventListener("click", locateOnce);
+  $("#addWaypointButton").addEventListener("click", () => openWaypointDialog(map.getCenter()));
+  $("#waypointForm").addEventListener("submit", saveWaypoint);
+  $("#waypointList").addEventListener("click", handleWaypointListClick);
+  $("#saveProfileButton").addEventListener("click", saveProfile);
+  $("#openImportButton").addEventListener("click", () => $("#importDialog").showModal());
+  $("#gpxFile").addEventListener("change", updateGpxFileName);
+  $("#importForm").addEventListener("submit", handleGpxImport);
+  $("#demoButton").addEventListener("click", startDemo);
+  $("#backupButton").addEventListener("click", exportBackup);
+  $("#exportButton").addEventListener("click", exportBackup);
+  $("#importBackupButton").addEventListener("click", () => $("#backupFile").click());
+  $("#backupFile").addEventListener("change", importBackup);
+  $("#resetButton").addEventListener("click", resetData);
+  $("#installButton").addEventListener("click", installApp);
+
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    installPrompt = event;
+    $("#installButton").hidden = false;
+  });
+
+  window.addEventListener("appinstalled", () => {
+    installPrompt = null;
+    $("#installButton").hidden = true;
+    showToast("Territorio 360 ya está instalada.");
+  });
+}
+
+function showView(target) {
+  $$(".view").forEach(view => {
+    const active = view.dataset.view === target;
+    view.hidden = !active;
+    view.classList.toggle("active", active);
+  });
+  $$(".bottom-nav button").forEach(button => {
+    const active = button.dataset.target === target;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  if (target === "map") setTimeout(() => map.invalidateSize(), 60);
+  else renderAll();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function handleStartForm(event) {
+  event.preventDefault();
+  const submitter = event.submitter;
+  if (submitter?.value === "cancel") {
+    $("#startDialog").close();
+    return;
+  }
+  if (state.active) {
+    showToast("Ya hay una aventura en marcha.");
+    $("#startDialog").close();
+    return;
+  }
+  const data = new FormData(event.currentTarget);
+  startActivity(data.get("mode"), data.get("environment"));
+  $("#startDialog").close();
+}
+
+function startActivity(mode, environment, options = {}) {
+  if (!MODE_DATA[mode]) mode = "run";
+  if (!ENVIRONMENT_DATA[environment]) environment = "country";
+  const now = Date.now();
+  state.active = {
+    id: makeId(),
+    mode,
+    environment,
+    source: options.source || "gps",
+    demo: Boolean(options.demo),
+    startTime: now,
+    pausedAt: null,
+    totalPausedMs: 0,
+    paused: false,
+    points: [],
+    distanceMeters: 0,
+    newCellIds: [],
+    discoveredIds: []
+  };
+  saveState();
+  updateSessionPanel();
+  activeRoute.setLatLngs([]);
+  if (!options.demo) startWatchingPosition();
+  startTimer();
+  showToast(`${MODE_DATA[mode].icon} Aventura iniciada`);
+}
+
+function restoreActiveSession() {
+  if (!state.active) return;
+  state.active.paused = true;
+  state.active.pausedAt = Date.now();
+  saveState();
+  activeRoute.setLatLngs(state.active.points.map(point => [point.lat, point.lng]));
+  updateSessionPanel();
+  startTimer();
+  if (state.active.points.length) {
+    map.fitBounds(activeRoute.getBounds(), { padding: [50, 170], maxZoom: 17 });
+  }
+  showToast("Tienes una aventura pausada. Pulsa Reanudar para continuar.");
+}
+
+function startWatchingPosition() {
+  if (!state.active || state.active.paused || state.active.demo) return;
+  clearPositionWatch();
+  if (!("geolocation" in navigator)) {
+    updateGpsStatus("Este dispositivo no ofrece ubicación GPS.", "error");
+    return;
+  }
+  updateGpsStatus("Buscando señal GPS…", "waiting");
+  watchId = navigator.geolocation.watchPosition(
+    handlePosition,
+    handlePositionError,
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
+  );
+}
+
+function handlePosition(position) {
+  const coords = position.coords;
+  updatePositionMarker(coords.latitude, coords.longitude, coords.accuracy);
+  if (!state.active || state.active.paused) return;
+
+  if (coords.accuracy > 80) {
+    updateGpsStatus(`Señal débil (±${Math.round(coords.accuracy)} m)`, "waiting");
+    return;
+  }
+
+  const point = {
+    lat: Number(coords.latitude.toFixed(7)),
+    lng: Number(coords.longitude.toFixed(7)),
+    time: position.timestamp || Date.now(),
+    accuracy: Math.round(coords.accuracy)
+  };
+  acceptTrackPoint(point);
+  updateGpsStatus(`GPS listo · precisión ±${point.accuracy} m`, "ready");
+}
+
+function acceptTrackPoint(point, options = {}) {
+  const active = state.active;
+  if (!active || active.paused) return false;
+  const previous = active.points.at(-1);
+
+  if (previous) {
+    const segment = haversine(previous.lat, previous.lng, point.lat, point.lng);
+    const seconds = Math.max(1, (point.time - previous.time) / 1000);
+    const speed = segment / seconds;
+    const maxSpeed = MODE_DATA[active.mode].maxSpeed;
+    if (!options.force && speed > maxSpeed) {
+      updateGpsStatus("Salto de GPS descartado", "waiting");
+      return false;
+    }
+    if (!options.force && segment < 3) return false;
+    active.distanceMeters += segment;
+    claimSegment(previous, point, active.mode);
+  } else {
+    claimCell(point.lat, point.lng, active.mode);
+  }
+
+  active.points.push(point);
+  if (active.points.length > MAX_TRACK_POINTS) {
+    active.points = active.points.filter((_, index) => index % 2 === 0);
+  }
+
+  activeRoute.addLatLng([point.lat, point.lng]);
+  discoverNearbyWaypoints(point.lat, point.lng);
+  updateLiveStats();
+  if (active.points.length === 1) map.setView([point.lat, point.lng], 17);
+  else if (!options.noFollow) map.panTo([point.lat, point.lng], { animate: true, duration: .35 });
+  if (active.points.length % 5 === 0) saveState();
+  return true;
+}
+
+function handlePositionError(error) {
+  const messages = {
+    1: "Permiso de ubicación denegado",
+    2: "No se encuentra la señal GPS",
+    3: "El GPS tarda demasiado en responder"
+  };
+  updateGpsStatus(messages[error.code] || "No se pudo leer la ubicación", "error");
+}
+
+function locateOnce() {
+  if (!("geolocation" in navigator)) {
+    showToast("Este dispositivo no ofrece ubicación GPS.");
+    return;
+  }
+  $("#locateButton").textContent = "…";
+  navigator.geolocation.getCurrentPosition(position => {
+    const { latitude, longitude, accuracy } = position.coords;
+    updatePositionMarker(latitude, longitude, accuracy);
+    map.setView([latitude, longitude], 17);
+    $("#locateButton").textContent = "⌖";
+  }, error => {
+    handlePositionError(error);
+    $("#locateButton").textContent = "⌖";
+    showToast("No he podido obtener tu posición.");
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 15000 });
+}
+
+function updatePositionMarker(lat, lng, accuracy = 0) {
+  if (!positionMarker) {
+    positionMarker = L.circleMarker([lat, lng], {
+      radius: 8, color: "#ffffff", weight: 3, fillColor: "#4ce0b3", fillOpacity: 1
+    }).addTo(map);
+    accuracyCircle = L.circle([lat, lng], {
+      radius: accuracy, color: "#4ce0b3", weight: 1, fillColor: "#4ce0b3", fillOpacity: .08
+    }).addTo(map);
+  } else {
+    positionMarker.setLatLng([lat, lng]);
+    accuracyCircle.setLatLng([lat, lng]).setRadius(accuracy);
+  }
+}
+
+function togglePause() {
+  const active = state.active;
+  if (!active) return;
+  if (active.paused) {
+    active.totalPausedMs += Math.max(0, Date.now() - (active.pausedAt || Date.now()));
+    active.pausedAt = null;
+    active.paused = false;
+    $("#pauseButton").textContent = "Pausar";
+    if (!active.demo) startWatchingPosition();
+    updateGpsStatus(active.demo ? "Recorrido simulado" : "Buscando señal GPS…", "waiting");
+  } else {
+    active.paused = true;
+    active.pausedAt = Date.now();
+    clearPositionWatch();
+    $("#pauseButton").textContent = "Reanudar";
+    updateGpsStatus("Aventura pausada", "waiting");
+  }
+  saveState();
+  updateLiveStats();
+}
+
+function finalizeActiveActivity(options = {}) {
+  const active = state.active;
+  if (!active) return;
+  if (!options.skipConfirm && !window.confirm("¿Finalizar esta aventura y guardar el territorio conquistado?")) return;
+
+  clearPositionWatch();
+  if (demoTimer) {
+    clearInterval(demoTimer);
+    demoTimer = null;
+  }
+
+  const hasMovement = active.distanceMeters >= 20 || active.newCellIds.length > 1;
+  if (!hasMovement && !options.keepShort) {
+    active.newCellIds.forEach(id => delete state.claimed[id]);
+    state.active = null;
+    saveState();
+    activeRoute.setLatLngs([]);
+    updateSessionPanel();
+    renderAll();
+    showToast("Aventura descartada: el recorrido era demasiado corto.");
+    return;
+  }
+
+  const endTime = Date.now();
+  const pausedMs = active.totalPausedMs + (active.paused && active.pausedAt ? endTime - active.pausedAt : 0);
+  const durationSeconds = options.durationOverride || Math.max(1, Math.round((endTime - active.startTime - pausedMs) / 1000));
+  const score = scoreFor(active.mode, active.newCellIds.length, active.distanceMeters, active.discoveredIds.length);
+  const activity = {
+    id: active.id,
+    mode: active.mode,
+    environment: active.environment,
+    source: active.source,
+    demo: active.demo,
+    startTime: active.startTime,
+    endTime,
+    durationSeconds,
+    distanceMeters: Math.round(active.distanceMeters),
+    points: active.points,
+    newCellIds: active.newCellIds,
+    discoveredIds: active.discoveredIds,
+    score
+  };
+
+  state.activities.unshift(activity);
+  state.active = null;
+  saveState();
+  stopTimer();
+  updateSessionPanel();
+  renderAll();
+  if (activity.points.length > 1) map.fitBounds(activeRoute.getBounds(), { padding: [40, 180], maxZoom: 17 });
+  showToast(`Aventura guardada · +${score} puntos`);
+}
+
+function clearPositionWatch() {
+  if (watchId !== null && "geolocation" in navigator) navigator.geolocation.clearWatch(watchId);
+  watchId = null;
+}
+
+function startTimer() {
+  stopTimer();
+  timerId = window.setInterval(updateLiveStats, 1000);
+  updateLiveStats();
+}
+
+function stopTimer() {
+  if (timerId) window.clearInterval(timerId);
+  timerId = null;
+}
+
+function elapsedSeconds(active = state.active) {
+  if (!active) return 0;
+  const now = active.paused && active.pausedAt ? active.pausedAt : Date.now();
+  return Math.max(0, Math.round((now - active.startTime - active.totalPausedMs) / 1000));
+}
+
+function updateSessionPanel() {
+  const active = Boolean(state.active);
+  $("#sessionIdle").hidden = active;
+  $("#sessionActive").hidden = !active;
+  if (!active) {
+    stopTimer();
+    return;
+  }
+  $("#pauseButton").textContent = state.active.paused ? "Reanudar" : "Pausar";
+  updateLiveStats();
+}
+
+function updateLiveStats() {
+  const active = state.active;
+  if (!active) return;
+  const seconds = elapsedSeconds(active);
+  $("#liveTime").textContent = formatDuration(seconds);
+  $("#liveDistance").textContent = `${formatNumber(active.distanceMeters / 1000, 2)} km`;
+  $("#liveCells").textContent = active.newCellIds.length;
+  $("#livePace").textContent = formatPace(seconds, active.distanceMeters, active.mode);
+  const liveScore = scoreFor(active.mode, active.newCellIds.length, active.distanceMeters, active.discoveredIds.length);
+  $("#mapScore").textContent = formatInteger(totalScore(state) + liveScore);
+  $("#mapDistance").textContent = formatNumber(totalDistanceMeters(state) / 1000 + active.distanceMeters / 1000, 2);
+  $("#mapCellCount").textContent = formatInteger(claimedCount(state));
+}
+
+function updateGpsStatus(message, status) {
+  $("#gpsStatus").textContent = message;
+  $("#gpsDot").className = status === "ready" ? "ready" : status === "error" ? "error" : "";
+}
+
+function cellIdFor(lat, lng) {
+  const y = Math.floor((lat + 90) / CELL_SIZE);
+  const x = Math.floor((lng + 180) / CELL_SIZE);
+  return `${y}_${x}`;
+}
+
+function cellBounds(id) {
+  const [y, x] = id.split("_").map(Number);
+  const south = y * CELL_SIZE - 90;
+  const west = x * CELL_SIZE - 180;
+  return [[south, west], [south + CELL_SIZE, west + CELL_SIZE]];
+}
+
+function claimCell(lat, lng, mode, at = Date.now()) {
+  const id = cellIdFor(lat, lng);
+  if (state.claimed[id]) return false;
+  state.claimed[id] = { at, mode };
+  if (state.active && !state.active.newCellIds.includes(id)) state.active.newCellIds.push(id);
+  drawClaimedCell(id, state.claimed[id]);
+  return true;
+}
+
+function claimSegment(from, to, mode) {
+  const distance = haversine(from.lat, from.lng, to.lat, to.lng);
+  const steps = Math.max(1, Math.ceil(distance / 25));
+  for (let i = 0; i <= steps; i += 1) {
+    const ratio = i / steps;
+    claimCell(
+      from.lat + (to.lat - from.lat) * ratio,
+      from.lng + (to.lng - from.lng) * ratio,
+      mode,
+      to.time || Date.now()
+    );
+  }
+}
+
+function drawClaimedCell(id, claim) {
+  if (!territoryLayer || drawnCellIds.has(id)) return;
+  const color = MODE_DATA[claim.mode]?.color || MODE_DATA.run.color;
+  L.rectangle(cellBounds(id), {
+    cellId: id,
+    className: "claimed-cell",
+    color,
+    weight: 1,
+    opacity: .72,
+    fillColor: color,
+    fillOpacity: .29,
+    interactive: false
+  }).addTo(territoryLayer);
+  drawnCellIds.add(id);
+}
+
+function renderTerritoryOnMap() {
+  territoryLayer.clearLayers();
+  drawnCellIds = new Set();
+  Object.entries(state.claimed).forEach(([id, claim]) => drawClaimedCell(id, claim));
+}
+
+function openWaypointDialog(latlng) {
+  pendingWaypointPosition = { lat: latlng.lat, lng: latlng.lng };
+  $("#waypointCoordinates").textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+  $("#waypointName").value = "";
+  $("#waypointDialog").showModal();
+}
+
+function saveWaypoint(event) {
+  event.preventDefault();
+  if (event.submitter?.value === "cancel") {
+    $("#waypointDialog").close();
+    return;
+  }
+  if (!pendingWaypointPosition) return;
+  const data = new FormData(event.currentTarget);
+  state.waypoints.push({
+    id: makeId(),
+    name: String(data.get("name") || "Lugar por descubrir").trim(),
+    type: String(data.get("type") || "treasure"),
+    lat: pendingWaypointPosition.lat,
+    lng: pendingWaypointPosition.lng,
+    createdAt: Date.now(),
+    discoveredAt: null,
+    discoveredBy: null
+  });
+  saveState();
+  pendingWaypointPosition = null;
+  $("#waypointDialog").close();
+  renderWaypoints();
+  renderMissions();
+  showToast("Nuevo punto añadido al mapa.");
+}
+
+function discoverNearbyWaypoints(lat, lng) {
+  if (!state.active) return;
+  let changed = false;
+  state.waypoints.forEach(waypoint => {
+    if (waypoint.discoveredAt) return;
+    if (haversine(lat, lng, waypoint.lat, waypoint.lng) <= 35) {
+      waypoint.discoveredAt = Date.now();
+      waypoint.discoveredBy = state.active.id;
+      if (!state.active.discoveredIds.includes(waypoint.id)) state.active.discoveredIds.push(waypoint.id);
+      changed = true;
+      showToast(`✨ Hallazgo: ${waypoint.name}`);
+    }
+  });
+  if (changed) {
+    renderWaypoints();
+    saveState();
+  }
+}
+
+function renderWaypoints() {
+  waypointLayer.clearLayers();
+  state.waypoints.forEach(waypoint => {
+    const data = WAYPOINT_DATA[waypoint.type] || WAYPOINT_DATA.treasure;
+    const marker = L.marker([waypoint.lat, waypoint.lng], {
+      icon: L.divIcon({
+        className: "territory-waypoint-marker",
+        html: `<div style="width:34px;height:34px;display:grid;place-items:center;border-radius:50% 50% 50% 12px;transform:rotate(-45deg);background:${waypoint.discoveredAt ? "#c9f35b" : "#17352e"};border:2px solid #f5fbf8;box-shadow:0 7px 18px rgba(0,0,0,.28)"><span style="transform:rotate(45deg);font-size:17px">${data.icon}</span></div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 34]
+      })
+    });
+    marker.bindPopup(`<strong>${escapeHtml(waypoint.name)}</strong>${waypoint.discoveredAt ? "Descubierto" : `${data.label} · acércate a menos de 35 m`}`);
+    marker.addTo(waypointLayer);
+  });
+
+  const container = $("#waypointList");
+  if (!state.waypoints.length) {
+    container.innerHTML = `<div class="empty-state">Aún no has creado ningún punto. Añade uno o mantén pulsado un lugar del mapa.</div>`;
+    return;
+  }
+  container.innerHTML = [...state.waypoints]
+    .sort((a, b) => Number(Boolean(a.discoveredAt)) - Number(Boolean(b.discoveredAt)))
+    .map(waypoint => {
+      const data = WAYPOINT_DATA[waypoint.type] || WAYPOINT_DATA.treasure;
+      return `<article class="waypoint-item ${waypoint.discoveredAt ? "discovered" : ""}">
+        <div class="waypoint-icon">${data.icon}</div>
+        <div class="waypoint-copy"><strong>${escapeHtml(waypoint.name)}</strong><span>${waypoint.discoveredAt ? `Descubierto · ${formatDate(waypoint.discoveredAt)}` : `${data.label} · pendiente`}</span></div>
+        <button class="mini-delete" type="button" data-waypoint-delete="${waypoint.id}" aria-label="Eliminar ${escapeHtml(waypoint.name)}">×</button>
+      </article>`;
+    }).join("");
+}
+
+function handleWaypointListClick(event) {
+  const button = event.target.closest("[data-waypoint-delete]");
+  if (!button) return;
+  const id = button.dataset.waypointDelete;
+  const waypoint = state.waypoints.find(item => item.id === id);
+  if (!waypoint || !window.confirm(`¿Eliminar el punto “${waypoint.name}”?`)) return;
+  state.waypoints = state.waypoints.filter(item => item.id !== id);
+  saveState();
+  renderWaypoints();
+  renderMissions();
+}
+
+function renderAll() {
+  renderTerritoryOnMap();
+  renderWaypoints();
+  renderMapSummary();
+  renderTerritoryDashboard();
+  renderMissions();
+  $("#profileName").value = state.profile.name || "Jesús";
+  const avatarLetter = (state.profile.name || "J").trim().charAt(0).toUpperCase() || "J";
+  $(".avatar").textContent = avatarLetter;
+  updateSessionPanel();
+}
+
+function renderMapSummary() {
+  $("#mapCellCount").textContent = formatInteger(claimedCount(state));
+  $("#mapScore").textContent = formatInteger(totalScore(state));
+  $("#mapDistance").textContent = formatNumber(totalDistanceMeters(state) / 1000, 2);
+}
+
+function renderTerritoryDashboard() {
+  const cells = claimedCount(state);
+  const score = totalScore(state);
+  const level = Math.floor(score / 1000) + 1;
+  const levelRemainder = score % 1000;
+  const progress = Math.round(levelRemainder / 10);
+
+  $("#territoryCells").textContent = formatInteger(cells);
+  $("#territoryArea").textContent = `≈ ${formatArea(approximateClaimedArea())} explorados`;
+  $("#totalDistance").textContent = `${formatNumber(totalDistanceMeters(state) / 1000, 1)} km`;
+  $("#totalActivities").textContent = state.activities.length;
+  $("#totalEnvironments").textContent = usedEnvironments(state).size;
+  $("#totalFinds").textContent = discoveredCount(state);
+  $("#levelBadge").textContent = `Nivel ${level}`;
+  $("#levelProgress").textContent = `${progress}%`;
+  $("#levelRing").style.setProperty("--progress", `${progress * 3.6}deg`);
+
+  const modeDistances = Object.fromEntries(Object.keys(MODE_DATA).map(mode => [mode, 0]));
+  state.activities.forEach(activity => {
+    if (modeDistances[activity.mode] !== undefined) modeDistances[activity.mode] += activity.distanceMeters || 0;
+  });
+  const max = Math.max(1, ...Object.values(modeDistances));
+  $("#modeBreakdown").innerHTML = Object.entries(MODE_DATA).map(([mode, data]) => `
+    <div class="mode-row" data-mode="${mode}"><span>${data.icon} ${data.label}</span><div class="meter"><i style="width:${(modeDistances[mode] / max) * 100}%"></i></div><strong>${formatNumber(modeDistances[mode] / 1000, 1)} km</strong></div>
+  `).join("");
+
+  const list = $("#activityList");
+  if (!state.activities.length) {
+    list.innerHTML = `<div class="empty-state">Tu primera aventura aparecerá aquí. El sofá, de momento, no conquista parcelas.</div>`;
+    return;
+  }
+  list.innerHTML = state.activities.slice(0, 12).map(activity => {
+    const mode = MODE_DATA[activity.mode] || MODE_DATA.run;
+    const source = activity.demo ? "demo" : activity.source === "gpx" ? "GPX" : ENVIRONMENT_DATA[activity.environment] || "Aventura";
+    return `<article class="activity-item">
+      <div class="activity-icon">${mode.icon}</div>
+      <div class="activity-copy"><strong>${mode.label} · ${formatDate(activity.startTime)}</strong><span>${source} · ${formatDuration(activity.durationSeconds)} · ${activity.newCellIds?.length || 0} parcelas</span></div>
+      <div class="activity-value"><strong>${formatNumber((activity.distanceMeters || 0) / 1000, 2)} km</strong><span>+${formatInteger(activity.score || 0)} pts</span></div>
+    </article>`;
+  }).join("");
+}
+
+function renderMissions() {
+  const score = totalScore(state);
+  $("#missionScore").textContent = formatInteger(score);
+  const unlocked = BADGES.filter(badge => badge.test(state));
+  $("#badgeCount").textContent = `${unlocked.length}/${BADGES.length}`;
+  $("#badgeGrid").innerHTML = BADGES.map(badge => `
+    <article class="badge-card ${badge.test(state) ? "unlocked" : ""}"><b>${badge.icon}</b><strong>${badge.name}</strong><span>${badge.detail}</span></article>
+  `).join("");
+
+  const mission = nextMission();
+  const percent = Math.min(100, Math.round((mission.current / mission.target) * 100));
+  $("#featuredMission").innerHTML = `
+    <span class="eyebrow">Misión recomendada</span>
+    <h2>${mission.icon} ${mission.name}</h2>
+    <p>${mission.description}</p>
+    <div class="mission-progress"><div class="meter"><i style="width:${percent}%"></i></div><strong>${mission.current}/${mission.target}</strong></div>
+  `;
+}
+
+function nextMission() {
+  const cells = claimedCount(state);
+  if (cells < 5) return { icon: "🚩", name: "Abre el mapa", description: "Conquista tus primeras cinco parcelas en cualquier modalidad.", current: cells, target: 5 };
+  if (discoveredCount(state) < 1) return { icon: "🧭", name: "Primer hallazgo", description: "Crea un punto en el mapa y acércate a menos de 35 metros durante una aventura.", current: 0, target: 1 };
+  if (usedModes(state).size < 2) return { icon: "🔄", name: "Cambia el paso", description: "Completa aventuras utilizando dos formas diferentes de moverte.", current: usedModes(state).size, target: 2 };
+  if (usedEnvironments(state).size < 3) return { icon: "🌲", name: "Tres mundos", description: "Explora tres entornos distintos: urbano, campo, bosque, montaña, costa o agua.", current: usedEnvironments(state).size, target: 3 };
+  if (cells < 25) return { icon: "🗺️", name: "Hazte cartógrafo", description: "Amplía tu dominio hasta alcanzar 25 parcelas conquistadas.", current: cells, target: 25 };
+  if (usedModes(state).size < 4) return { icon: "🧩", name: "Explorador total", description: "Conquista territorio corriendo, caminando, nadando y en bicicleta.", current: usedModes(state).size, target: 4 };
+  return { icon: "👑", name: "El gran dominio", description: "Sigue explorando hasta alcanzar las 100 parcelas conquistadas.", current: Math.min(cells, 100), target: 100 };
+}
+
+function scoreFor(mode, newCells, distanceMeters, finds = 0) {
+  const multiplier = MODE_DATA[mode]?.multiplier || 1;
+  return Math.round(newCells * 100 * multiplier + (distanceMeters / 1000) * 25 * multiplier + finds * 300);
+}
+
+function totalScore(currentState) {
+  return currentState.activities.reduce((sum, activity) => sum + (Number(activity.score) || 0), 0);
+}
+
+function totalDistanceMeters(currentState) {
+  return currentState.activities.reduce((sum, activity) => sum + (Number(activity.distanceMeters) || 0), 0);
+}
+
+function claimedCount(currentState) {
+  return Object.keys(currentState.claimed || {}).length;
+}
+
+function discoveredCount(currentState) {
+  return currentState.waypoints.filter(waypoint => waypoint.discoveredAt).length;
+}
+
+function usedModes(currentState) {
+  return new Set(currentState.activities.map(activity => activity.mode).filter(Boolean));
+}
+
+function usedEnvironments(currentState) {
+  return new Set(currentState.activities.map(activity => activity.environment).filter(Boolean));
+}
+
+function approximateClaimedArea() {
+  return Object.keys(state.claimed).reduce((sum, id) => {
+    const bounds = cellBounds(id);
+    const latitude = (bounds[0][0] + bounds[1][0]) / 2;
+    const height = 111320 * CELL_SIZE;
+    const width = 111320 * Math.cos(latitude * Math.PI / 180) * CELL_SIZE;
+    return sum + height * width;
+  }, 0);
+}
+
+function saveProfile() {
+  const name = $("#profileName").value.trim();
+  if (!name) {
+    showToast("Escribe un nombre de explorador.");
+    return;
+  }
+  state.profile.name = name;
+  saveState();
+  $(".avatar").textContent = name.charAt(0).toUpperCase();
+  showToast("Perfil guardado.");
+}
+
+function updateGpxFileName() {
+  $("#gpxFileName").textContent = $("#gpxFile").files[0]?.name || "Toca aquí para elegirlo";
+}
+
+async function handleGpxImport(event) {
+  event.preventDefault();
+  if (event.submitter?.value === "cancel") {
+    $("#importDialog").close();
+    return;
+  }
+  const file = $("#gpxFile").files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const points = parseGpx(text);
+    if (points.length < 2) throw new Error("El archivo no contiene una ruta válida.");
+    const mode = $("#importMode").value;
+    const environment = $("#importEnvironment").value;
+    const activity = createActivityFromRoute(points, mode, environment, "gpx");
+    $("#importDialog").close();
+    event.currentTarget.reset();
+    $("#gpxFileName").textContent = "Toca aquí para elegirlo";
+    activeRoute.setLatLngs(activity.points.map(point => [point.lat, point.lng]));
+    map.fitBounds(activeRoute.getBounds(), { padding: [40, 160], maxZoom: 17 });
+    renderAll();
+    showToast(`GPX importado · ${activity.newCellIds.length} parcelas nuevas`);
+  } catch (error) {
+    showToast(error.message || "No se pudo importar el archivo GPX.");
+  }
+}
+
+function parseGpx(text) {
+  const documentXml = new DOMParser().parseFromString(text, "application/xml");
+  if (documentXml.querySelector("parsererror")) throw new Error("El archivo GPX está dañado o no es válido.");
+  const nodes = [...documentXml.querySelectorAll("trkpt, rtept")];
+  const raw = nodes.map((node, index) => {
+    const lat = Number(node.getAttribute("lat"));
+    const lng = Number(node.getAttribute("lon"));
+    const timeText = node.querySelector("time")?.textContent;
+    return { lat, lng, time: timeText ? new Date(timeText).getTime() : index * 10000 };
+  }).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+  if (raw.length <= MAX_TRACK_POINTS) return raw;
+  const step = Math.ceil(raw.length / MAX_TRACK_POINTS);
+  return raw.filter((_, index) => index % step === 0 || index === raw.length - 1);
+}
+
+function createActivityFromRoute(points, mode, environment, source = "gpx") {
+  const before = new Set(Object.keys(state.claimed));
+  let distanceMeters = 0;
+  points.forEach((point, index) => {
+    if (index === 0) claimCell(point.lat, point.lng, mode, point.time);
+    else {
+      distanceMeters += haversine(points[index - 1].lat, points[index - 1].lng, point.lat, point.lng);
+      claimSegment(points[index - 1], point, mode);
+    }
+  });
+  const newCellIds = Object.keys(state.claimed).filter(id => !before.has(id));
+  const firstTime = points[0].time > 100000000000 ? points[0].time : Date.now() - Math.max(600000, distanceMeters / 2.4 * 1000);
+  const lastTime = points.at(-1).time > firstTime ? points.at(-1).time : Date.now();
+  const durationSeconds = Math.max(1, Math.round((lastTime - firstTime) / 1000));
+  const activity = {
+    id: makeId(), mode, environment, source, demo: false,
+    startTime: firstTime, endTime: lastTime, durationSeconds,
+    distanceMeters: Math.round(distanceMeters), points,
+    newCellIds, discoveredIds: [],
+    score: scoreFor(mode, newCellIds.length, distanceMeters, 0)
+  };
+  state.activities.unshift(activity);
+  saveState();
+  return activity;
+}
+
+function startDemo() {
+  if (state.active) {
+    showToast("Finaliza primero la aventura actual.");
+    return;
+  }
+  showView("map");
+  const center = map.getCenter();
+  startActivity("bike", "country", { demo: true, source: "demo" });
+  updateGpsStatus("Recorrido simulado en marcha", "ready");
+
+  const points = [];
+  const count = 48;
+  for (let i = 0; i < count; i += 1) {
+    const angle = (Math.PI * 2 * i) / count;
+    points.push({
+      lat: center.lat + Math.sin(angle) * .0022 + Math.sin(angle * 2) * .00035,
+      lng: center.lng + Math.cos(angle) * .0030,
+      time: Date.now() + i * 15000,
+      accuracy: 5
+    });
+  }
+  points.push({ ...points[0], time: Date.now() + count * 15000 });
+
+  let index = 0;
+  demoTimer = window.setInterval(() => {
+    if (!state.active || state.active.paused) return;
+    const point = points[index];
+    acceptTrackPoint(point, { force: true });
+    updatePositionMarker(point.lat, point.lng, 5);
+    index += 1;
+    if (index >= points.length) {
+      clearInterval(demoTimer);
+      demoTimer = null;
+      finalizeActiveActivity({ skipConfirm: true, keepShort: true, durationOverride: count * 15 });
+    }
+  }, 120);
+}
+
+function exportBackup() {
+  const payload = JSON.stringify({ exportedAt: new Date().toISOString(), app: "Territorio 360", ...state }, null, 2);
+  downloadBlob(payload, `territorio-360-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
+  showToast("Copia de tus datos descargada.");
+}
+
+async function importBackup(event) {
+  const file = event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    if (!parsed || !Array.isArray(parsed.activities) || typeof parsed.claimed !== "object") throw new Error();
+    if (!window.confirm("Esta copia sustituirá los datos actuales. ¿Continuar?")) return;
+    state = {
+      ...defaultState(),
+      ...parsed,
+      profile: { ...defaultState().profile, ...(parsed.profile || {}) },
+      active: null
+    };
+    saveState();
+    activeRoute.setLatLngs([]);
+    renderAll();
+    showToast("Copia restaurada correctamente.");
+  } catch {
+    showToast("El archivo no es una copia válida de Territorio 360.");
+  }
+}
+
+function resetData() {
+  if (!window.confirm("¿Borrar recorridos, parcelas, puntos y logros de este dispositivo? Esta acción no se puede deshacer.")) return;
+  clearPositionWatch();
+  if (demoTimer) clearInterval(demoTimer);
+  state = defaultState();
+  saveState();
+  activeRoute.setLatLngs([]);
+  renderAll();
+  showToast("La aplicación vuelve a estar como nueva.");
+}
+
+async function installApp() {
+  if (!installPrompt) {
+    showToast("Abre el menú del navegador y elige “Instalar aplicación”.");
+    return;
+  }
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null;
+  $("#installButton").hidden = true;
+}
+
+function registerServiceWorker() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(error => console.warn("Service worker:", error));
+  }
+}
+
+function downloadBlob(content, filename, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const earthRadius = 6371000;
+  const toRadians = value => value * Math.PI / 180;
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadius * Math.asin(Math.sqrt(a));
+}
+
+function formatDuration(totalSeconds) {
+  const seconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = seconds % 60;
+  return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}` : `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+}
+
+function formatPace(seconds, meters, mode) {
+  if (!meters || meters < 50) return "—";
+  if (mode === "bike") {
+    const kmh = (meters / 1000) / (seconds / 3600);
+    return Number.isFinite(kmh) ? `${formatNumber(kmh, 1)} km/h` : "—";
+  }
+  const secondsPerKm = seconds / (meters / 1000);
+  if (!Number.isFinite(secondsPerKm) || secondsPerKm > 5999) return "—";
+  return `${Math.floor(secondsPerKm / 60)}:${String(Math.round(secondsPerKm % 60)).padStart(2, "0")}/km`;
+}
+
+function formatNumber(value, digits = 0) {
+  return new Intl.NumberFormat("es-ES", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(value) || 0);
+}
+
+function formatInteger(value) {
+  return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 }).format(Number(value) || 0);
+}
+
+function formatDate(timestamp) {
+  return new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(timestamp));
+}
+
+function formatArea(squareMeters) {
+  if (squareMeters >= 1e6) return `${formatNumber(squareMeters / 1e6, 2)} km²`;
+  if (squareMeters >= 10000) return `${formatNumber(squareMeters / 10000, 2)} ha`;
+  return `${formatInteger(squareMeters)} m²`;
+}
+
+function makeId() {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
+}
+
+function showToast(message) {
+  const toast = $("#toast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
+}

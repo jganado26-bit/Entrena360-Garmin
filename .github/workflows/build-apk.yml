@@ -1,4 +1,4 @@
-name: Build Entrena360 APK
+name: Build Territorio 360 APK
 
 on:
   workflow_dispatch:
@@ -31,5 +31,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Entrena360-debug-apk
+          name: Territorio360-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
