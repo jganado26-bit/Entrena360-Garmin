@@ -18,15 +18,15 @@ public class MainActivity extends ComponentActivity {
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
     private static final int FILE_CHOOSER_REQUEST = 1001;
+    private HealthSyncBridge healthSyncBridge;
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         webView = findViewById(R.id.webview);
-
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -36,36 +36,20 @@ public class MainActivity extends ComponentActivity {
         settings.setMediaPlaybackRequiresUserGesture(false);
 
         webView.setWebViewClient(new WebViewClient());
+        healthSyncBridge = new HealthSyncBridge(this, webView);
+        webView.addJavascriptInterface(healthSyncBridge, "EntrenaHealth");
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
-            public boolean onShowFileChooser(
-                    WebView webView,
-                    ValueCallback<Uri[]> filePathCallback,
-                    FileChooserParams fileChooserParams) {
-
-                if (MainActivity.this.filePathCallback != null) {
-                    MainActivity.this.filePathCallback.onReceiveValue(null);
-                }
-                MainActivity.this.filePathCallback = filePathCallback;
-
-                Intent intent = fileChooserParams.createIntent();
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (MainActivity.this.filePathCallback != null) MainActivity.this.filePathCallback.onReceiveValue(null);
+                MainActivity.this.filePathCallback = callback;
+                Intent intent = params.createIntent();
                 intent.setType("*/*");
-                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
-                        "application/octet-stream",
-                        "application/xml",
-                        "text/xml",
-                        "text/csv",
-                        "text/plain"
-                });
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/octet-stream","application/xml","text/xml","text/csv","text/plain"});
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-
-                try {
-                    startActivityForResult(intent, FILE_CHOOSER_REQUEST);
-                } catch (Exception e) {
-                    MainActivity.this.filePathCallback = null;
-                    return false;
-                }
+                try { startActivityForResult(intent, FILE_CHOOSER_REQUEST); }
+                catch (Exception e) { MainActivity.this.filePathCallback = null; return false; }
                 return true;
             }
         });
@@ -74,39 +58,33 @@ public class MainActivity extends ComponentActivity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (healthSyncBridge != null) healthSyncBridge.autoSyncIfPossible();
+    }
+
+    @Override
     @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == FILE_CHOOSER_REQUEST) {
             if (filePathCallback == null) return;
-
             Uri[] results = null;
-
             if (resultCode == Activity.RESULT_OK && data != null) {
                 if (data.getClipData() != null) {
                     int count = data.getClipData().getItemCount();
                     results = new Uri[count];
-                    for (int i = 0; i < count; i++) {
-                        results[i] = data.getClipData().getItemAt(i).getUri();
-                    }
-                } else if (data.getData() != null) {
-                    results = new Uri[]{data.getData()};
-                }
+                    for (int i = 0; i < count; i++) results[i] = data.getClipData().getItemAt(i).getUri();
+                } else if (data.getData() != null) results = new Uri[]{data.getData()};
             }
-
             filePathCallback.onReceiveValue(results);
             filePathCallback = null;
             return;
         }
-
         super.onActivityResult(requestCode, resultCode, data);
     }
 
     @Override
     public void onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
-        }
+        if (webView.canGoBack()) webView.goBack(); else super.onBackPressed();
     }
 }
