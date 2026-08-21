@@ -149,15 +149,15 @@
           <p class="section-help">El recorrido puede grabarse en Territorio 360, en tu reloj o en otra aplicación. La conquista se calcula igual para todas las fuentes.</p>
           <div class="source-list">
             <div class="source-row"><span class="source-icon">♡</span><div><strong>Health Connect</strong><small>Android · integración planificada</small></div><b class="source-status planned">SIGUIENTE</b></div>
-            <div class="source-row"><span class="source-icon">GPX</span><div><strong>Archivo del reloj</strong><small>Garmin, COROS, Polar, Suunto y otros</small></div><b class="source-status ready">LISTO</b></div>
+            <div class="source-row"><span class="source-icon">GPS</span><div><strong>Archivo del reloj</strong><small>GPX y TCX · Suunto, COROS, Garmin, Polar y otros</small></div><b class="source-status ready">LISTO</b></div>
           </div>
           <button class="secondary-button full-button" id="connectionInfoButton" type="button">Cómo conectar mi dispositivo</button>
         </div>
 
         <div class="card-section">
-          <div class="card-title"><h2>Importar una ruta</h2><span class="file-chip">GPX</span></div>
-          <p class="section-help">Importa una actividad grabada con Garmin u otro reloj. Todos sus kilómetros suman y solo el terreno nuevo suma conquista.</p>
-          <button class="secondary-button full-button" id="openImportButton" type="button">Importar archivo GPX</button>
+          <div class="card-title"><h2>Importar una ruta</h2><span class="file-chip">GPX + TCX</span></div>
+          <p class="section-help">Importa una actividad de Suunto, COROS, Garmin, Polar, Wahoo u otra marca. La app detectará el origen cuando el archivo lo indique.</p>
+          <button class="secondary-button full-button" id="openImportButton" type="button">Importar actividad del reloj</button>
         </div>
 
         <div class="card-section">
@@ -234,9 +234,9 @@
     <form method="dialog" id="importForm">
       <button class="dialog-close" value="cancel" aria-label="Cerrar" type="submit">×</button>
       <span class="eyebrow">Garmin y otros relojes</span>
-      <h2>Importar una ruta GPX</h2>
-      <label class="drop-zone" for="gpxFile"><strong>Seleccionar archivo .gpx</strong><span id="gpxFileName">Toca aquí para elegirlo</span></label>
-      <input class="sr-only" id="gpxFile" name="gpx" type="file" accept=".gpx,application/gpx+xml" required>
+      <h2>Importar una actividad</h2>
+      <label class="drop-zone" for="gpxFile"><strong>Seleccionar archivo .gpx o .tcx</strong><span id="gpxFileName">Toca aquí para elegirlo</span></label>
+      <input class="sr-only" id="gpxFile" name="routeFile" type="file" accept=".gpx,.tcx,application/gpx+xml,application/vnd.garmin.tcx+xml,application/xml,text/xml" required>
       <label class="field-label" for="importMode">Actividad</label>
       <select id="importMode" name="mode"><option value="run">Correr</option><option value="walk">Caminar</option><option value="bike">Bicicleta</option><option value="swim">Nadar</option></select>
       <label class="field-label" for="importEnvironment">Entorno principal</label>
@@ -253,9 +253,14 @@
       <ol class="connection-steps">
         <li><b>1</b><span><strong>Graba el entrenamiento</strong><small>Con tu reloj, ciclocomputador o aplicación habitual.</small></span></li>
         <li><b>2</b><span><strong>Sincroniza la aplicación del fabricante</strong><small>En Android, podrá compartir la sesión mediante Health Connect.</small></span></li>
-        <li><b>3</b><span><strong>Autoriza la ruta en Territorio 360</strong><small>La ruta GPS requiere tu aprobación. Si no está disponible, importa el GPX.</small></span></li>
+        <li><b>3</b><span><strong>Autoriza o importa la ruta</strong><small>Health Connect requiere tu aprobación. También puedes importar GPX o TCX directamente.</small></span></li>
       </ol>
-      <p class="dialog-note">La conexión directa con Health Connect será el siguiente módulo nativo. Esta versión ya admite GPX y aplica las mismas reglas de kilómetros y conquista a cualquier recorrido importado.</p>
+      <div class="brand-help">
+        <p><strong>Suunto</strong><span>Entrenamiento → menú de tres puntos → exportar GPX.</span></p>
+        <p><strong>COROS</strong><span>Actividad → menú → Export Data → GPX o TCX.</span></p>
+        <p><strong>Otras marcas</strong><span>Exporta el entrenamiento con ruta GPS en GPX o TCX.</span></p>
+      </div>
+      <p class="dialog-note">La conexión automática llegará mediante Health Connect y APIs autorizadas. El importador evita que el mismo archivo vuelva a sumar si se selecciona más de una vez.</p>
       <button class="primary-button full-button" value="close" type="submit">Entendido</button>
     </form>
   </dialog>

@@ -76,7 +76,7 @@ function init() {
 
 function defaultState() {
   return {
-    version: 2,
+    version: 3,
     profile: { name: "Jesús" },
     areaClaims: {},
     lineClaims: {},
@@ -101,7 +101,7 @@ function normalizeState(parsed) {
   const normalized = {
     ...clean,
     ...parsed,
-    version: 2,
+    version: 3,
     profile: { ...clean.profile, ...(parsed.profile || {}) },
     areaClaims: parsed.areaClaims && typeof parsed.areaClaims === "object" ? parsed.areaClaims : {},
     lineClaims: parsed.lineClaims && typeof parsed.lineClaims === "object" ? parsed.lineClaims : {},
@@ -867,7 +867,17 @@ function renderTerritoryDashboard() {
 
 function sourceLabel(activity) {
   if (activity.demo) return "Demo";
-  if (activity.source === "gpx") return "GPX / reloj";
+  const sourceNames = {
+    suunto: "Suunto",
+    coros: "COROS",
+    garmin: "Garmin",
+    polar: "Polar",
+    wahoo: "Wahoo",
+    strava: "Strava",
+    gpx: "GPX / reloj",
+    tcx: "TCX / reloj"
+  };
+  if (sourceNames[activity.source]) return sourceNames[activity.source];
   if (activity.source === "health-connect") return "Health Connect";
   return ENVIRONMENT_DATA[activity.environment] || "Aventura";
 }
@@ -1011,11 +1021,21 @@ async function handleGpxImport(event) {
   if (!file) return;
   try {
     const text = await file.text();
-    const points = parseGpx(text);
+    const parsedRoute = parseActivityFile(text, file.name);
+    const points = parsedRoute.points;
     if (points.length < 2) throw new Error("El archivo no contiene una ruta válida.");
+    const importKey = routeImportKey(points);
+    const duplicate = state.activities.some(activity => {
+      if (activity.importKey === importKey) return true;
+      if (!activity.importKey && activity.source !== "gps" && Array.isArray(activity.points) && activity.points.length > 1) {
+        return routeImportKey(activity.points) === importKey;
+      }
+      return false;
+    });
+    if (duplicate) throw new Error("Esta actividad ya está importada. No volverá a sumar kilómetros ni conquista.");
     const mode = $("#importMode").value;
     const environment = $("#importEnvironment").value;
-    const activity = createActivityFromRoute(points, mode, environment, "gpx");
+    const activity = createActivityFromRoute(points, mode, environment, parsedRoute.source, importKey);
     $("#importDialog").close();
     event.currentTarget.reset();
     $("#gpxFileName").textContent = "Toca aquí para elegirlo";
@@ -1025,28 +1045,99 @@ async function handleGpxImport(event) {
     const result = activity.conquestType === "area"
       ? `${formatArea(activity.newAreaSqm)} nuevos`
       : `${formatNumber(activity.newLinearMeters / 1000, 2)} km lineales nuevos`;
-    showToast(`GPX importado · ${result}`);
+    showToast(`${sourceLabel(activity)} importado · ${result}`);
   } catch (error) {
-    showToast(error.message || "No se pudo importar el archivo GPX.");
+    showToast(error.message || "No se pudo importar el archivo de actividad.");
   }
+}
+
+function parseActivityFile(text, fileName = "") {
+  const documentXml = new DOMParser().parseFromString(text, "application/xml");
+  if (documentXml.querySelector("parsererror")) throw new Error("El archivo está dañado o no es válido.");
+  const tcxTrackpoints = xmlElements(documentXml, "Trackpoint");
+  const gpxTrackpoints = [...xmlElements(documentXml, "trkpt"), ...xmlElements(documentXml, "rtept")];
+  let points;
+  let format;
+  if (tcxTrackpoints.length) {
+    points = parseTcxDocument(tcxTrackpoints);
+    format = "tcx";
+  } else if (gpxTrackpoints.length) {
+    points = parseGpxDocument(gpxTrackpoints);
+    format = "gpx";
+  } else {
+    throw new Error("El archivo no contiene una ruta GPS compatible.");
+  }
+  return { points: limitTrackPoints(points), source: detectActivitySource(text, fileName, format) };
 }
 
 function parseGpx(text) {
   const documentXml = new DOMParser().parseFromString(text, "application/xml");
   if (documentXml.querySelector("parsererror")) throw new Error("El archivo GPX está dañado o no es válido.");
-  const nodes = [...documentXml.querySelectorAll("trkpt, rtept")];
-  const raw = nodes.map((node, index) => {
+  const nodes = [...xmlElements(documentXml, "trkpt"), ...xmlElements(documentXml, "rtept")];
+  return limitTrackPoints(parseGpxDocument(nodes));
+}
+
+function parseGpxDocument(nodes) {
+  return nodes.map((node, index) => {
     const lat = Number(node.getAttribute("lat"));
     const lng = Number(node.getAttribute("lon"));
-    const timeText = node.querySelector("time")?.textContent;
+    const timeText = xmlElements(node, "time")[0]?.textContent;
     return { lat, lng, time: timeText ? new Date(timeText).getTime() : index * 10000 };
   }).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+}
+
+function parseTcxDocument(nodes) {
+  return nodes.map((node, index) => {
+    const lat = Number(xmlElements(node, "LatitudeDegrees")[0]?.textContent);
+    const lng = Number(xmlElements(node, "LongitudeDegrees")[0]?.textContent);
+    const timeText = xmlElements(node, "Time")[0]?.textContent;
+    return { lat, lng, time: timeText ? new Date(timeText).getTime() : index * 10000 };
+  }).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+}
+
+function xmlElements(root, localName) {
+  const namespaced = root.getElementsByTagNameNS ? [...root.getElementsByTagNameNS("*", localName)] : [];
+  return namespaced.length ? namespaced : [...root.getElementsByTagName(localName)];
+}
+
+function limitTrackPoints(raw) {
   if (raw.length <= MAX_TRACK_POINTS) return raw;
   const step = Math.ceil(raw.length / MAX_TRACK_POINTS);
   return raw.filter((_, index) => index % step === 0 || index === raw.length - 1);
 }
 
-function createActivityFromRoute(points, mode, environment, source = "gpx") {
+function detectActivitySource(text, fileName, format) {
+  const clue = `${fileName} ${text.slice(0, 60000)}`.toLowerCase();
+  if (clue.includes("suunto")) return "suunto";
+  if (clue.includes("coros")) return "coros";
+  if (clue.includes("garmin")) return "garmin";
+  if (clue.includes("polar")) return "polar";
+  if (clue.includes("wahoo")) return "wahoo";
+  if (clue.includes("strava")) return "strava";
+  return format;
+}
+
+function routeImportKey(points) {
+  const first = points[0];
+  const middle = points[Math.floor(points.length / 2)];
+  const last = points.at(-1);
+  const raw = [
+    Math.round(Number(first.time) / 1000),
+    Math.round(Number(last.time) / 1000),
+    first.lat.toFixed(5), first.lng.toFixed(5),
+    middle.lat.toFixed(5), middle.lng.toFixed(5),
+    last.lat.toFixed(5), last.lng.toFixed(5),
+    Math.round(routeDistance(points)), points.length
+  ].join("|");
+  let hash = 2166136261;
+  for (let index = 0; index < raw.length; index += 1) {
+    hash ^= raw.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `route-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function createActivityFromRoute(points, mode, environment, source = "gpx", importKey = null) {
   const distanceMeters = routeDistance(points);
   const firstTime = points[0].time > 100000000000 ? points[0].time : Date.now() - Math.max(600000, distanceMeters / 2.4 * 1000);
   const lastTime = points.at(-1).time > firstTime ? points.at(-1).time : Date.now();
@@ -1054,7 +1145,7 @@ function createActivityFromRoute(points, mode, environment, source = "gpx") {
   const id = makeId();
   const conquest = applyRouteConquest(points, mode, state, id, distanceMeters);
   const activity = {
-    id, mode, environment, source, demo: false,
+    id, mode, environment, source, importKey, demo: false,
     startTime: firstTime, endTime: lastTime, durationSeconds,
     distanceMeters: Math.round(distanceMeters), points,
     discoveredIds: [],

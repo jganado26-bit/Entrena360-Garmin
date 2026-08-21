@@ -61,10 +61,10 @@ flowchart TD
 
 Orden recomendado de integración:
 
-1. GPX, ya disponible y válido para la mayoría de relojes.
+1. GPX y TCX, ya disponibles para Suunto, COROS, Garmin, Polar, Wahoo y otras marcas.
 2. Health Connect en Android para sesiones de correr, caminar, bicicleta y natación. Las rutas creadas por otras apps requieren consentimiento explícito del usuario.
 3. HealthKit en iPhone y Apple Watch.
-4. Conectores directos como Strava o Garmin cuando exista backend, credenciales de proveedor y revisión de sus APIs.
+4. Conectores directos con COROS, Suunto, Strava, Garmin y otros cuando exista backend, credenciales de proveedor y aprobación de sus procesos de acceso.
 
 Cada actividad importada debe guardar el proveedor y el identificador externo para impedir duplicados.
 
@@ -83,9 +83,21 @@ Cada actividad importada debe guardar el proveedor y el identificador externo pa
 | Fase | Entrega |
 |---|---|
 | 0.2 | GPS, GPX, cuatro deportes, circuitos y líneas, mapa personal, dos métricas locales |
-| 0.3 | Health Connect, selector de actividades y prevención de duplicados externos |
-| 0.4 | Cuentas, seguidores, privacidad, feed y rankings por ciudad |
-| 0.5 | Temporadas, equipos, misiones compartidas y protección antifraude avanzada |
+| 0.3 | GPX y TCX multimarca, detección de origen y prevención de duplicados |
+| 0.4 | Health Connect, selector de actividades y sincronización fiable en segundo plano |
+| 0.5 | Cuentas, seguidores, privacidad, feed y rankings por ciudad |
+| 0.6 | Temporadas, equipos, rutas sugeridas, misiones compartidas y protección antifraude avanzada |
+
+## Mejoras priorizadas
+
+1. **Conexión automática y fiable.** Health Connect primero; después APIs directas de fabricantes con OAuth y un identificador único por actividad.
+2. **Mapa social controlable.** Capas separadas para mi territorio, personas seguidas y temporada local, con colores legibles y filtros por deporte.
+3. **Ligas cercanas.** Clasificaciones semanales y mensuales de ciudad, seguidos y equipos, siempre separando kilómetros de conquista.
+4. **Rutas hacia terreno nuevo.** Proponer recorridos seguros que pasen por huecos sin explorar y permitir elegir distancia y modalidad.
+5. **Retos cooperativos.** Conquistar entre varias personas un parque, una vía verde o un conjunto de barrios.
+6. **Privacidad y juego limpio.** Ocultar domicilio, no publicar en directo, detectar saltos GPS y dejar actividades dudosas fuera del ranking.
+7. **Motivación saludable.** Rachas con días de descanso, objetivos personales y recompensas por constancia, no por entrenar de forma excesiva.
+8. **Resumen visual.** Animación del recorrido al terminar, porcentaje nuevo, insignias y posición local antes/después.
 
 ## Indicador principal de éxito
 
