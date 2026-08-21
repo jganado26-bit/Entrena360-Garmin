@@ -40,16 +40,16 @@
           <div id="map" role="application" aria-label="Mapa de territorios conquistados"></div>
 
           <div class="map-summary glass-panel" aria-live="polite">
-            <div><strong id="mapCellCount">0</strong><span>parcelas</span></div>
+            <div><strong id="mapArea">0,0</strong><span>hectáreas</span></div>
+            <div><strong id="mapLinear">0,00</strong><span>km lineales</span></div>
             <div><strong id="mapScore">0</strong><span>puntos</span></div>
-            <div><strong id="mapDistance">0,00</strong><span>km</span></div>
           </div>
 
           <button class="locate-button" id="locateButton" type="button" aria-label="Centrar el mapa en mi posición" title="Mi posición">⌖</button>
 
           <div class="session-panel" id="sessionPanel">
             <div class="session-idle" id="sessionIdle">
-              <p><strong>El mapa te está esperando</strong><span>Inicia una aventura y conquista cada parcela que atravieses.</span></p>
+              <p><strong>El mapa te está esperando</strong><span>Cierra una zona o abre un nuevo tramo siguiendo tu recorrido real.</span></p>
               <button class="primary-button start-button" id="openStartButton" type="button">Empezar aventura</button>
             </div>
 
@@ -57,7 +57,7 @@
               <div class="live-stats">
                 <div><span>Tiempo</span><strong id="liveTime">00:00</strong></div>
                 <div><span>Distancia</span><strong id="liveDistance">0,00 km</strong></div>
-                <div><span>Nuevas</span><strong id="liveCells">0</strong></div>
+                <div><span>Conquista</span><strong id="liveConquest">Lineal</strong></div>
                 <div><span>Ritmo</span><strong id="livePace">—</strong></div>
               </div>
               <div class="gps-status"><i id="gpsDot"></i><span id="gpsStatus">Buscando señal GPS…</span></div>
@@ -79,17 +79,27 @@
         <article class="hero-card territory-hero">
           <div>
             <span>Territorio total</span>
-            <strong><b id="territoryCells">0</b> parcelas</strong>
-            <small id="territoryArea">≈ 0 m² explorados</small>
+            <strong><b id="territoryAreaValue">0 m²</b></strong>
+            <small id="territoryArea">delimitados por recorridos circulares</small>
           </div>
           <div class="level-ring" id="levelRing"><span id="levelProgress">0%</span></div>
         </article>
 
         <div class="stat-grid">
-          <article class="stat-card"><span>Distancia</span><strong id="totalDistance">0 km</strong><small>acumulada</small></article>
+          <article class="stat-card"><span>Rutas lineales</span><strong id="totalLinear">0 km</strong><small>sin repetir tramos</small></article>
           <article class="stat-card"><span>Aventuras</span><strong id="totalActivities">0</strong><small>completadas</small></article>
           <article class="stat-card"><span>Entornos</span><strong id="totalEnvironments">0</strong><small>diferentes</small></article>
           <article class="stat-card"><span>Hallazgos</span><strong id="totalFinds">0</strong><small>descubiertos</small></article>
+        </div>
+
+        <div class="card-section">
+          <div class="card-title"><h2>Clasificaciones</h2><span class="file-chip">LOCAL</span></div>
+          <div class="ranking-tabs" role="tablist" aria-label="Tipo de clasificación">
+            <button class="active" id="distanceRankingButton" type="button" role="tab" aria-selected="true">Más kilómetros</button>
+            <button id="conquestRankingButton" type="button" role="tab" aria-selected="false">Más conquista</button>
+          </div>
+          <div class="ranking-list" id="rankingList"></div>
+          <p class="section-help ranking-help">Ahora muestra tus datos del dispositivo. Al añadir cuentas aparecerán aquí todos los exploradores.</p>
         </div>
 
         <div class="card-section">
@@ -135,8 +145,18 @@
         </div>
 
         <div class="card-section">
+          <div class="card-title"><h2>Reloj y aplicaciones</h2><span class="file-chip">FUENTES</span></div>
+          <p class="section-help">El recorrido puede grabarse en Territorio 360, en tu reloj o en otra aplicación. La conquista se calcula igual para todas las fuentes.</p>
+          <div class="source-list">
+            <div class="source-row"><span class="source-icon">♡</span><div><strong>Health Connect</strong><small>Android · integración planificada</small></div><b class="source-status planned">SIGUIENTE</b></div>
+            <div class="source-row"><span class="source-icon">GPX</span><div><strong>Archivo del reloj</strong><small>Garmin, COROS, Polar, Suunto y otros</small></div><b class="source-status ready">LISTO</b></div>
+          </div>
+          <button class="secondary-button full-button" id="connectionInfoButton" type="button">Cómo conectar mi dispositivo</button>
+        </div>
+
+        <div class="card-section">
           <div class="card-title"><h2>Importar una ruta</h2><span class="file-chip">GPX</span></div>
-          <p class="section-help">Importa una actividad grabada con Garmin u otro reloj. La ruta también conquistará parcelas.</p>
+          <p class="section-help">Importa una actividad grabada con Garmin u otro reloj. Todos sus kilómetros suman y solo el terreno nuevo suma conquista.</p>
           <button class="secondary-button full-button" id="openImportButton" type="button">Importar archivo GPX</button>
         </div>
 
@@ -185,7 +205,7 @@
         <option value="coast">Costa</option>
         <option value="water">Río, lago o piscina</option>
       </select>
-      <p class="dialog-note">El GPS solo se activa al empezar. Para nadar, lo más práctico será importar después el GPX del reloj.</p>
+      <p class="dialog-note">Si terminas a menos de 100 m del inicio, el recorrido cerrará una zona siguiendo el camino. Si queda abierto, conquistará distancia lineal. Para nadar, lo más práctico será importar después el GPX del reloj.</p>
       <button class="primary-button full-button" id="startButton" value="default" type="submit">Conquistar territorio</button>
     </form>
   </dialog>
@@ -222,6 +242,21 @@
       <label class="field-label" for="importEnvironment">Entorno principal</label>
       <select id="importEnvironment" name="environment"><option value="urban">Urbano</option><option value="country" selected>Campo y caminos</option><option value="forest">Bosque</option><option value="mountain">Montaña</option><option value="coast">Costa</option><option value="water">Río, lago o piscina</option></select>
       <button class="primary-button full-button" value="default" type="submit">Importar y conquistar</button>
+    </form>
+  </dialog>
+
+  <dialog id="connectionDialog" class="app-dialog">
+    <form method="dialog">
+      <button class="dialog-close" value="close" aria-label="Cerrar" type="submit">×</button>
+      <span class="eyebrow">Fuentes de actividad</span>
+      <h2>Del reloj al territorio</h2>
+      <ol class="connection-steps">
+        <li><b>1</b><span><strong>Graba el entrenamiento</strong><small>Con tu reloj, ciclocomputador o aplicación habitual.</small></span></li>
+        <li><b>2</b><span><strong>Sincroniza la aplicación del fabricante</strong><small>En Android, podrá compartir la sesión mediante Health Connect.</small></span></li>
+        <li><b>3</b><span><strong>Autoriza la ruta en Territorio 360</strong><small>La ruta GPS requiere tu aprobación. Si no está disponible, importa el GPX.</small></span></li>
+      </ol>
+      <p class="dialog-note">La conexión directa con Health Connect será el siguiente módulo nativo. Esta versión ya admite GPX y aplica las mismas reglas de kilómetros y conquista a cualquier recorrido importado.</p>
+      <button class="primary-button full-button" value="close" type="submit">Entendido</button>
     </form>
   </dialog>
 

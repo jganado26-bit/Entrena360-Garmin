@@ -1,7 +1,10 @@
 "use strict";
 
 const STORAGE_KEY = "territorio360-state-v1";
-const CELL_SIZE = 0.001;
+const AREA_CLAIM_SIZE = 0.0005;
+const LINE_CLAIM_SIZE = 0.0002;
+const LOOP_MIN_DISTANCE_METERS = 500;
+const LOOP_CLOSE_DISTANCE_METERS = 100;
 const DEFAULT_CENTER = [41.5035, -5.7460];
 const MAX_TRACK_POINTS = 5000;
 
@@ -30,9 +33,9 @@ const WAYPOINT_DATA = {
 };
 
 const BADGES = [
-  { id: "first", icon: "🚩", name: "Primer paso", detail: "5 parcelas", test: s => claimedCount(s) >= 5 },
-  { id: "mapmaker", icon: "🗺️", name: "Cartógrafo", detail: "25 parcelas", test: s => claimedCount(s) >= 25 },
-  { id: "century", icon: "💯", name: "Gran dominio", detail: "100 parcelas", test: s => claimedCount(s) >= 100 },
+  { id: "first", icon: "🚩", name: "Primer paso", detail: "1 km recorrido", test: s => totalDistanceMeters(s) >= 1000 },
+  { id: "mapmaker", icon: "🗺️", name: "Cartógrafo", detail: "10 ha cerradas", test: s => totalAreaSqm(s) >= 100000 },
+  { id: "century", icon: "💯", name: "Gran dominio", detail: "100 ha cerradas", test: s => totalAreaSqm(s) >= 1000000 },
   { id: "allrounder", icon: "🧩", name: "Todoterreno", detail: "4 modalidades", test: s => usedModes(s).size >= 4 },
   { id: "wanderer", icon: "🌍", name: "Sin fronteras", detail: "3 entornos", test: s => usedEnvironments(s).size >= 3 },
   { id: "seeker", icon: "✨", name: "Buscador", detail: "3 hallazgos", test: s => discoveredCount(s) >= 3 }
@@ -51,7 +54,7 @@ let installPrompt = null;
 let pendingWaypointPosition = null;
 let demoTimer = null;
 let toastTimer = null;
-let drawnCellIds = new Set();
+let rankingMode = "distance";
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -73,9 +76,10 @@ function init() {
 
 function defaultState() {
   return {
-    version: 1,
+    version: 2,
     profile: { name: "Jesús" },
-    claimed: {},
+    areaClaims: {},
+    lineClaims: {},
     activities: [],
     waypoints: [],
     active: null
@@ -86,18 +90,34 @@ function loadState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!parsed || typeof parsed !== "object") return defaultState();
-    const clean = defaultState();
-    return {
-      ...clean,
-      ...parsed,
-      profile: { ...clean.profile, ...(parsed.profile || {}) },
-      claimed: parsed.claimed && typeof parsed.claimed === "object" ? parsed.claimed : {},
-      activities: Array.isArray(parsed.activities) ? parsed.activities : [],
-      waypoints: Array.isArray(parsed.waypoints) ? parsed.waypoints : []
-    };
+    return normalizeState(parsed);
   } catch {
     return defaultState();
   }
+}
+
+function normalizeState(parsed) {
+  const clean = defaultState();
+  const normalized = {
+    ...clean,
+    ...parsed,
+    version: 2,
+    profile: { ...clean.profile, ...(parsed.profile || {}) },
+    areaClaims: parsed.areaClaims && typeof parsed.areaClaims === "object" ? parsed.areaClaims : {},
+    lineClaims: parsed.lineClaims && typeof parsed.lineClaims === "object" ? parsed.lineClaims : {},
+    activities: Array.isArray(parsed.activities) ? parsed.activities : [],
+    waypoints: Array.isArray(parsed.waypoints) ? parsed.waypoints : [],
+    active: parsed.active || null
+  };
+
+  if (Number(parsed.version || 1) < 2) {
+    normalized.areaClaims = {};
+    normalized.lineClaims = {};
+    [...normalized.activities]
+      .sort((a, b) => Number(a.startTime || 0) - Number(b.startTime || 0))
+      .forEach(activity => migrateActivityConquest(activity, normalized));
+  }
+  return normalized;
 }
 
 function saveState() {
@@ -141,6 +161,9 @@ function bindEvents() {
   $("#waypointForm").addEventListener("submit", saveWaypoint);
   $("#waypointList").addEventListener("click", handleWaypointListClick);
   $("#saveProfileButton").addEventListener("click", saveProfile);
+  $("#distanceRankingButton").addEventListener("click", () => setRankingMode("distance"));
+  $("#conquestRankingButton").addEventListener("click", () => setRankingMode("conquest"));
+  $("#connectionInfoButton").addEventListener("click", () => $("#connectionDialog").showModal());
   $("#openImportButton").addEventListener("click", () => $("#importDialog").showModal());
   $("#gpxFile").addEventListener("change", updateGpxFileName);
   $("#importForm").addEventListener("submit", handleGpxImport);
@@ -215,7 +238,6 @@ function startActivity(mode, environment, options = {}) {
     paused: false,
     points: [],
     distanceMeters: 0,
-    newCellIds: [],
     discoveredIds: []
   };
   saveState();
@@ -291,9 +313,6 @@ function acceptTrackPoint(point, options = {}) {
     }
     if (!options.force && segment < 3) return false;
     active.distanceMeters += segment;
-    claimSegment(previous, point, active.mode);
-  } else {
-    claimCell(point.lat, point.lng, active.mode);
   }
 
   active.points.push(point);
@@ -383,9 +402,8 @@ function finalizeActiveActivity(options = {}) {
     demoTimer = null;
   }
 
-  const hasMovement = active.distanceMeters >= 20 || active.newCellIds.length > 1;
+  const hasMovement = active.distanceMeters >= 20 && active.points.length > 1;
   if (!hasMovement && !options.keepShort) {
-    active.newCellIds.forEach(id => delete state.claimed[id]);
     state.active = null;
     saveState();
     activeRoute.setLatLngs([]);
@@ -398,7 +416,8 @@ function finalizeActiveActivity(options = {}) {
   const endTime = Date.now();
   const pausedMs = active.totalPausedMs + (active.paused && active.pausedAt ? endTime - active.pausedAt : 0);
   const durationSeconds = options.durationOverride || Math.max(1, Math.round((endTime - active.startTime - pausedMs) / 1000));
-  const score = scoreFor(active.mode, active.newCellIds.length, active.distanceMeters, active.discoveredIds.length);
+  const conquest = applyRouteConquest(active.points, active.mode, state, active.id, active.distanceMeters);
+  const score = scoreForConquest(active.mode, conquest, active.distanceMeters, active.discoveredIds.length);
   const activity = {
     id: active.id,
     mode: active.mode,
@@ -410,8 +429,8 @@ function finalizeActiveActivity(options = {}) {
     durationSeconds,
     distanceMeters: Math.round(active.distanceMeters),
     points: active.points,
-    newCellIds: active.newCellIds,
     discoveredIds: active.discoveredIds,
+    ...conquest,
     score
   };
 
@@ -422,7 +441,10 @@ function finalizeActiveActivity(options = {}) {
   updateSessionPanel();
   renderAll();
   if (activity.points.length > 1) map.fitBounds(activeRoute.getBounds(), { padding: [40, 180], maxZoom: 17 });
-  showToast(`Aventura guardada · +${score} puntos`);
+  const result = activity.conquestType === "area"
+    ? `${formatArea(activity.newAreaSqm)} nuevos`
+    : `${formatNumber(activity.newLinearMeters / 1000, 2)} km lineales nuevos`;
+  showToast(`Aventura guardada · ${result}`);
 }
 
 function clearPositionWatch() {
@@ -465,12 +487,12 @@ function updateLiveStats() {
   const seconds = elapsedSeconds(active);
   $("#liveTime").textContent = formatDuration(seconds);
   $("#liveDistance").textContent = `${formatNumber(active.distanceMeters / 1000, 2)} km`;
-  $("#liveCells").textContent = active.newCellIds.length;
+  $("#liveConquest").textContent = isClosedRoute(active.points, active.distanceMeters) ? "Zona" : "Lineal";
   $("#livePace").textContent = formatPace(seconds, active.distanceMeters, active.mode);
-  const liveScore = scoreFor(active.mode, active.newCellIds.length, active.distanceMeters, active.discoveredIds.length);
+  const liveScore = distanceScoreFor(active.mode, active.distanceMeters) + active.discoveredIds.length * 300;
   $("#mapScore").textContent = formatInteger(totalScore(state) + liveScore);
-  $("#mapDistance").textContent = formatNumber(totalDistanceMeters(state) / 1000 + active.distanceMeters / 1000, 2);
-  $("#mapCellCount").textContent = formatInteger(claimedCount(state));
+  $("#mapArea").textContent = formatNumber(totalAreaSqm(state) / 10000, 1);
+  $("#mapLinear").textContent = formatNumber(totalLinearMeters(state) / 1000, 2);
 }
 
 function updateGpsStatus(message, status) {
@@ -478,62 +500,207 @@ function updateGpsStatus(message, status) {
   $("#gpsDot").className = status === "ready" ? "ready" : status === "error" ? "error" : "";
 }
 
-function cellIdFor(lat, lng) {
-  const y = Math.floor((lat + 90) / CELL_SIZE);
-  const x = Math.floor((lng + 180) / CELL_SIZE);
+function cellIdAt(lat, lng, size) {
+  const y = Math.floor((lat + 90) / size);
+  const x = Math.floor((lng + 180) / size);
   return `${y}_${x}`;
 }
 
-function cellBounds(id) {
+function cellBounds(id, size) {
   const [y, x] = id.split("_").map(Number);
-  const south = y * CELL_SIZE - 90;
-  const west = x * CELL_SIZE - 180;
-  return [[south, west], [south + CELL_SIZE, west + CELL_SIZE]];
+  const south = y * size - 90;
+  const west = x * size - 180;
+  return [[south, west], [south + size, west + size]];
 }
 
-function claimCell(lat, lng, mode, at = Date.now()) {
-  const id = cellIdFor(lat, lng);
-  if (state.claimed[id]) return false;
-  state.claimed[id] = { at, mode };
-  if (state.active && !state.active.newCellIds.includes(id)) state.active.newCellIds.push(id);
-  drawClaimedCell(id, state.claimed[id]);
-  return true;
+function cellCenter(id, size) {
+  const bounds = cellBounds(id, size);
+  return {
+    lat: (bounds[0][0] + bounds[1][0]) / 2,
+    lng: (bounds[0][1] + bounds[1][1]) / 2
+  };
 }
 
-function claimSegment(from, to, mode) {
-  const distance = haversine(from.lat, from.lng, to.lat, to.lng);
-  const steps = Math.max(1, Math.ceil(distance / 25));
-  for (let i = 0; i <= steps; i += 1) {
-    const ratio = i / steps;
-    claimCell(
-      from.lat + (to.lat - from.lat) * ratio,
-      from.lng + (to.lng - from.lng) * ratio,
-      mode,
-      to.time || Date.now()
-    );
+function routeDistance(points) {
+  return points.reduce((sum, point, index) => {
+    if (!index) return 0;
+    const previous = points[index - 1];
+    return sum + haversine(previous.lat, previous.lng, point.lat, point.lng);
+  }, 0);
+}
+
+function isClosedRoute(points, distanceMeters = routeDistance(points)) {
+  if (points.length < 4 || distanceMeters < LOOP_MIN_DISTANCE_METERS) return false;
+  const first = points[0];
+  const last = points.at(-1);
+  return haversine(first.lat, first.lng, last.lat, last.lng) <= LOOP_CLOSE_DISTANCE_METERS;
+}
+
+function simplifyForGeometry(points) {
+  if (points.length <= 2) return [...points];
+  const simplified = [points[0]];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = simplified.at(-1);
+    const point = points[index];
+    if (haversine(previous.lat, previous.lng, point.lat, point.lng) >= 8) simplified.push(point);
   }
+  simplified.push(points.at(-1));
+  if (simplified.length <= 800) return simplified;
+  const step = Math.ceil(simplified.length / 800);
+  return simplified.filter((_, index) => index % step === 0 || index === simplified.length - 1);
 }
 
-function drawClaimedCell(id, claim) {
-  if (!territoryLayer || drawnCellIds.has(id)) return;
-  const color = MODE_DATA[claim.mode]?.color || MODE_DATA.run.color;
-  L.rectangle(cellBounds(id), {
-    cellId: id,
-    className: "claimed-cell",
-    color,
-    weight: 1,
-    opacity: .72,
-    fillColor: color,
-    fillOpacity: .29,
-    interactive: false
-  }).addTo(territoryLayer);
-  drawnCellIds.add(id);
+function polygonAreaSqm(points) {
+  if (points.length < 3) return 0;
+  const referenceLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
+  const metersPerLng = 111320 * Math.cos(referenceLat * Math.PI / 180);
+  const projected = points.map(point => ({ x: point.lng * metersPerLng, y: point.lat * 111320 }));
+  let twiceArea = 0;
+  projected.forEach((point, index) => {
+    const next = projected[(index + 1) % projected.length];
+    twiceArea += point.x * next.y - next.x * point.y;
+  });
+  return Math.abs(twiceArea) / 2;
+}
+
+function pointInPolygon(lat, lng, polygon) {
+  let inside = false;
+  for (let index = 0, previousIndex = polygon.length - 1; index < polygon.length; previousIndex = index, index += 1) {
+    const point = polygon[index];
+    const previous = polygon[previousIndex];
+    const crosses = (point.lat > lat) !== (previous.lat > lat)
+      && lng < (previous.lng - point.lng) * (lat - point.lat) / ((previous.lat - point.lat) || Number.EPSILON) + point.lng;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function areaCellsInsidePolygon(points) {
+  const polygon = simplifyForGeometry(points);
+  const lats = polygon.map(point => point.lat);
+  const lngs = polygon.map(point => point.lng);
+  const minY = Math.floor((Math.min(...lats) + 90) / AREA_CLAIM_SIZE);
+  const maxY = Math.floor((Math.max(...lats) + 90) / AREA_CLAIM_SIZE);
+  const minX = Math.floor((Math.min(...lngs) + 180) / AREA_CLAIM_SIZE);
+  const maxX = Math.floor((Math.max(...lngs) + 180) / AREA_CLAIM_SIZE);
+  const candidates = Math.max(1, (maxY - minY + 1) * (maxX - minX + 1));
+  const step = Math.max(1, Math.ceil(Math.sqrt(candidates / 60000)));
+  const ids = [];
+  for (let y = minY; y <= maxY; y += step) {
+    for (let x = minX; x <= maxX; x += step) {
+      const id = `${y}_${x}`;
+      const center = cellCenter(id, AREA_CLAIM_SIZE);
+      if (pointInPolygon(center.lat, center.lng, polygon)) ids.push(id);
+    }
+  }
+  if (!ids.length) {
+    const centerLat = lats.reduce((sum, value) => sum + value, 0) / lats.length;
+    const centerLng = lngs.reduce((sum, value) => sum + value, 0) / lngs.length;
+    ids.push(cellIdAt(centerLat, centerLng, AREA_CLAIM_SIZE));
+  }
+  return [...new Set(ids)];
+}
+
+function lineCellsAlongRoute(points) {
+  const ids = new Set();
+  points.forEach((point, index) => {
+    if (!index) {
+      ids.add(cellIdAt(point.lat, point.lng, LINE_CLAIM_SIZE));
+      return;
+    }
+    const previous = points[index - 1];
+    const distance = haversine(previous.lat, previous.lng, point.lat, point.lng);
+    const steps = Math.max(1, Math.ceil(distance / 12));
+    for (let part = 0; part <= steps; part += 1) {
+      const ratio = part / steps;
+      ids.add(cellIdAt(
+        previous.lat + (point.lat - previous.lat) * ratio,
+        previous.lng + (point.lng - previous.lng) * ratio,
+        LINE_CLAIM_SIZE
+      ));
+    }
+  });
+  return [...ids];
+}
+
+function applyRouteConquest(points, mode, targetState, activityId, measuredDistance) {
+  const distanceMeters = Number(measuredDistance) || routeDistance(points);
+  const timestamp = Number(points.at(-1)?.time) || Date.now();
+  if (isClosedRoute(points, distanceMeters)) {
+    const polygon = simplifyForGeometry(points);
+    const allIds = areaCellsInsidePolygon(polygon);
+    const newIds = allIds.filter(id => !targetState.areaClaims[id]);
+    newIds.forEach(id => {
+      targetState.areaClaims[id] = { at: timestamp, mode, activityId };
+    });
+    const grossAreaSqm = polygonAreaSqm(polygon);
+    return {
+      conquestType: "area",
+      polygon: polygon.map(point => [point.lat, point.lng]),
+      grossAreaSqm: Math.round(grossAreaSqm),
+      newAreaSqm: Math.round(grossAreaSqm * newIds.length / Math.max(1, allIds.length)),
+      areaCellIds: newIds,
+      newLinearMeters: 0,
+      lineCellIds: []
+    };
+  }
+
+  const allIds = lineCellsAlongRoute(points);
+  const newIds = allIds.filter(id => !targetState.lineClaims[id]);
+  newIds.forEach(id => {
+    targetState.lineClaims[id] = { at: timestamp, mode, activityId };
+  });
+  return {
+    conquestType: "line",
+    polygon: [],
+    grossAreaSqm: 0,
+    newAreaSqm: 0,
+    areaCellIds: [],
+    newLinearMeters: Math.round(distanceMeters * newIds.length / Math.max(1, allIds.length)),
+    lineCellIds: newIds
+  };
+}
+
+function migrateActivityConquest(activity, targetState) {
+  const points = Array.isArray(activity.points) ? activity.points : [];
+  if (points.length < 2) return;
+  const conquest = applyRouteConquest(points, activity.mode || "run", targetState, activity.id, activity.distanceMeters);
+  Object.assign(activity, conquest);
+  delete activity.newCellIds;
+  activity.score = scoreForConquest(activity.mode, conquest, activity.distanceMeters, activity.discoveredIds?.length || 0);
 }
 
 function renderTerritoryOnMap() {
   territoryLayer.clearLayers();
-  drawnCellIds = new Set();
-  Object.entries(state.claimed).forEach(([id, claim]) => drawClaimedCell(id, claim));
+  state.activities.slice().reverse().forEach(activity => {
+    if (!Array.isArray(activity.points) || activity.points.length < 2) return;
+    const mode = MODE_DATA[activity.mode] || MODE_DATA.run;
+    const coordinates = activity.points.map(point => [point.lat, point.lng]);
+    if (activity.conquestType === "area") {
+      L.polygon(coordinates, {
+        color: mode.color,
+        weight: 3,
+        opacity: .9,
+        fillColor: mode.color,
+        fillOpacity: .18,
+        lineJoin: "round"
+      }).bindPopup(`<strong>${mode.icon} Zona cerrada</strong><br>${formatArea(activity.newAreaSqm)} nuevos`).addTo(territoryLayer);
+      return;
+    }
+    L.polyline(coordinates, {
+      color: mode.color,
+      weight: 12,
+      opacity: .25,
+      lineCap: "round",
+      interactive: false
+    }).addTo(territoryLayer);
+    L.polyline(coordinates, {
+      color: mode.color,
+      weight: 3,
+      opacity: .92,
+      lineCap: "round"
+    }).bindPopup(`<strong>${mode.icon} Tramo lineal</strong><br>${formatNumber(activity.newLinearMeters / 1000, 2)} km nuevos`).addTo(territoryLayer);
+  });
 }
 
 function openWaypointDialog(latlng) {
@@ -646,21 +813,21 @@ function renderAll() {
 }
 
 function renderMapSummary() {
-  $("#mapCellCount").textContent = formatInteger(claimedCount(state));
+  $("#mapArea").textContent = formatNumber(totalAreaSqm(state) / 10000, 1);
+  $("#mapLinear").textContent = formatNumber(totalLinearMeters(state) / 1000, 2);
   $("#mapScore").textContent = formatInteger(totalScore(state));
-  $("#mapDistance").textContent = formatNumber(totalDistanceMeters(state) / 1000, 2);
 }
 
 function renderTerritoryDashboard() {
-  const cells = claimedCount(state);
+  const areaSqm = totalAreaSqm(state);
+  const linearMeters = totalLinearMeters(state);
   const score = totalScore(state);
   const level = Math.floor(score / 1000) + 1;
   const levelRemainder = score % 1000;
   const progress = Math.round(levelRemainder / 10);
 
-  $("#territoryCells").textContent = formatInteger(cells);
-  $("#territoryArea").textContent = `≈ ${formatArea(approximateClaimedArea())} explorados`;
-  $("#totalDistance").textContent = `${formatNumber(totalDistanceMeters(state) / 1000, 1)} km`;
+  $("#territoryAreaValue").textContent = formatArea(areaSqm);
+  $("#totalLinear").textContent = `${formatNumber(linearMeters / 1000, 2)} km`;
   $("#totalActivities").textContent = state.activities.length;
   $("#totalEnvironments").textContent = usedEnvironments(state).size;
   $("#totalFinds").textContent = discoveredCount(state);
@@ -679,18 +846,59 @@ function renderTerritoryDashboard() {
 
   const list = $("#activityList");
   if (!state.activities.length) {
-    list.innerHTML = `<div class="empty-state">Tu primera aventura aparecerá aquí. El sofá, de momento, no conquista parcelas.</div>`;
+    list.innerHTML = `<div class="empty-state">Tu primera aventura aparecerá aquí. Cierra una ruta para delimitar una zona o deja el recorrido abierto para conquistar un tramo.</div>`;
+    renderRanking();
     return;
   }
   list.innerHTML = state.activities.slice(0, 12).map(activity => {
     const mode = MODE_DATA[activity.mode] || MODE_DATA.run;
-    const source = activity.demo ? "demo" : activity.source === "gpx" ? "GPX" : ENVIRONMENT_DATA[activity.environment] || "Aventura";
+    const source = sourceLabel(activity);
+    const conquest = activity.conquestType === "area"
+      ? `${formatArea(activity.newAreaSqm)} nuevos · zona cerrada`
+      : `${formatNumber(activity.newLinearMeters / 1000, 2)} km lineales nuevos`;
     return `<article class="activity-item">
       <div class="activity-icon">${mode.icon}</div>
-      <div class="activity-copy"><strong>${mode.label} · ${formatDate(activity.startTime)}</strong><span>${source} · ${formatDuration(activity.durationSeconds)} · ${activity.newCellIds?.length || 0} parcelas</span></div>
+      <div class="activity-copy"><strong>${mode.label} · ${formatDate(activity.startTime)}</strong><span>${source} · ${formatDuration(activity.durationSeconds)} · ${conquest}</span></div>
       <div class="activity-value"><strong>${formatNumber((activity.distanceMeters || 0) / 1000, 2)} km</strong><span>+${formatInteger(activity.score || 0)} pts</span></div>
     </article>`;
   }).join("");
+  renderRanking();
+}
+
+function sourceLabel(activity) {
+  if (activity.demo) return "Demo";
+  if (activity.source === "gpx") return "GPX / reloj";
+  if (activity.source === "health-connect") return "Health Connect";
+  return ENVIRONMENT_DATA[activity.environment] || "Aventura";
+}
+
+function setRankingMode(mode) {
+  rankingMode = mode === "conquest" ? "conquest" : "distance";
+  const distanceButton = $("#distanceRankingButton");
+  const conquestButton = $("#conquestRankingButton");
+  distanceButton.classList.toggle("active", rankingMode === "distance");
+  conquestButton.classList.toggle("active", rankingMode === "conquest");
+  distanceButton.setAttribute("aria-selected", String(rankingMode === "distance"));
+  conquestButton.setAttribute("aria-selected", String(rankingMode === "conquest"));
+  renderRanking();
+}
+
+function renderRanking() {
+  const container = $("#rankingList");
+  if (!container) return;
+  const name = state.profile.name || "Explorador";
+  const avatar = escapeHtml(name.trim().charAt(0).toUpperCase() || "E");
+  const isDistance = rankingMode === "distance";
+  const value = isDistance
+    ? `${formatNumber(totalDistanceMeters(state) / 1000, 2)} km`
+    : `${formatInteger(conquestRankingPoints(state))} pts`;
+  const help = isDistance ? "Todos los kilómetros cuentan, aunque repitas zona" : "Solo suman zonas y tramos que sean nuevos";
+  container.innerHTML = `<article class="ranking-row">
+    <span class="ranking-position">1</span>
+    <span class="ranking-avatar">${avatar}</span>
+    <span class="ranking-copy"><strong>${escapeHtml(name)}</strong><small>${help}</small></span>
+    <strong class="ranking-value">${value}</strong>
+  </article>`;
 }
 
 function renderMissions() {
@@ -713,19 +921,35 @@ function renderMissions() {
 }
 
 function nextMission() {
-  const cells = claimedCount(state);
-  if (cells < 5) return { icon: "🚩", name: "Abre el mapa", description: "Conquista tus primeras cinco parcelas en cualquier modalidad.", current: cells, target: 5 };
+  const distanceKm = Math.floor(totalDistanceMeters(state) / 1000);
+  const areaHa = Math.floor(totalAreaSqm(state) / 10000);
+  const linearKm = Math.floor(totalLinearMeters(state) / 1000);
+  if (distanceKm < 1) return { icon: "🚩", name: "Primer kilómetro", description: "Completa tu primer kilómetro; también cuenta si recorres una zona conocida.", current: distanceKm, target: 1 };
+  if (areaHa < 1) return { icon: "⭕", name: "Cierra el círculo", description: "Vuelve a menos de 100 m del inicio y delimita al menos una hectárea siguiendo el recorrido.", current: areaHa, target: 1 };
+  if (linearKm < 5) return { icon: "🛣️", name: "Traza tu camino", description: "Conquista cinco kilómetros lineales nuevos en rutas abiertas.", current: linearKm, target: 5 };
   if (discoveredCount(state) < 1) return { icon: "🧭", name: "Primer hallazgo", description: "Crea un punto en el mapa y acércate a menos de 35 metros durante una aventura.", current: 0, target: 1 };
   if (usedModes(state).size < 2) return { icon: "🔄", name: "Cambia el paso", description: "Completa aventuras utilizando dos formas diferentes de moverte.", current: usedModes(state).size, target: 2 };
   if (usedEnvironments(state).size < 3) return { icon: "🌲", name: "Tres mundos", description: "Explora tres entornos distintos: urbano, campo, bosque, montaña, costa o agua.", current: usedEnvironments(state).size, target: 3 };
-  if (cells < 25) return { icon: "🗺️", name: "Hazte cartógrafo", description: "Amplía tu dominio hasta alcanzar 25 parcelas conquistadas.", current: cells, target: 25 };
+  if (areaHa < 10) return { icon: "🗺️", name: "Hazte cartógrafo", description: "Amplía tu dominio cerrado hasta alcanzar diez hectáreas.", current: areaHa, target: 10 };
   if (usedModes(state).size < 4) return { icon: "🧩", name: "Explorador total", description: "Conquista territorio corriendo, caminando, nadando y en bicicleta.", current: usedModes(state).size, target: 4 };
-  return { icon: "👑", name: "El gran dominio", description: "Sigue explorando hasta alcanzar las 100 parcelas conquistadas.", current: Math.min(cells, 100), target: 100 };
+  return { icon: "👑", name: "El gran dominio", description: "Sigue explorando hasta alcanzar cien hectáreas cerradas.", current: Math.min(areaHa, 100), target: 100 };
 }
 
-function scoreFor(mode, newCells, distanceMeters, finds = 0) {
+function distanceScoreFor(mode, distanceMeters) {
   const multiplier = MODE_DATA[mode]?.multiplier || 1;
-  return Math.round(newCells * 100 * multiplier + (distanceMeters / 1000) * 25 * multiplier + finds * 300);
+  return Math.round((Number(distanceMeters) || 0) / 1000 * 25 * multiplier);
+}
+
+function conquestPointsForActivity(activity) {
+  const multiplier = MODE_DATA[activity.mode]?.multiplier || 1;
+  if (activity.conquestType === "area") return Math.round((Number(activity.newAreaSqm) || 0) / 10000 * 20 * multiplier);
+  return Math.round((Number(activity.newLinearMeters) || 0) / 1000 * 150 * multiplier);
+}
+
+function scoreForConquest(mode, conquest, distanceMeters, finds = 0) {
+  return distanceScoreFor(mode, distanceMeters)
+    + conquestPointsForActivity({ mode, ...conquest })
+    + finds * 300;
 }
 
 function totalScore(currentState) {
@@ -736,8 +960,16 @@ function totalDistanceMeters(currentState) {
   return currentState.activities.reduce((sum, activity) => sum + (Number(activity.distanceMeters) || 0), 0);
 }
 
-function claimedCount(currentState) {
-  return Object.keys(currentState.claimed || {}).length;
+function totalAreaSqm(currentState) {
+  return currentState.activities.reduce((sum, activity) => sum + (Number(activity.newAreaSqm) || 0), 0);
+}
+
+function totalLinearMeters(currentState) {
+  return currentState.activities.reduce((sum, activity) => sum + (Number(activity.newLinearMeters) || 0), 0);
+}
+
+function conquestRankingPoints(currentState) {
+  return currentState.activities.reduce((sum, activity) => sum + conquestPointsForActivity(activity), 0);
 }
 
 function discoveredCount(currentState) {
@@ -752,16 +984,6 @@ function usedEnvironments(currentState) {
   return new Set(currentState.activities.map(activity => activity.environment).filter(Boolean));
 }
 
-function approximateClaimedArea() {
-  return Object.keys(state.claimed).reduce((sum, id) => {
-    const bounds = cellBounds(id);
-    const latitude = (bounds[0][0] + bounds[1][0]) / 2;
-    const height = 111320 * CELL_SIZE;
-    const width = 111320 * Math.cos(latitude * Math.PI / 180) * CELL_SIZE;
-    return sum + height * width;
-  }, 0);
-}
-
 function saveProfile() {
   const name = $("#profileName").value.trim();
   if (!name) {
@@ -771,6 +993,7 @@ function saveProfile() {
   state.profile.name = name;
   saveState();
   $(".avatar").textContent = name.charAt(0).toUpperCase();
+  renderRanking();
   showToast("Perfil guardado.");
 }
 
@@ -799,7 +1022,10 @@ async function handleGpxImport(event) {
     activeRoute.setLatLngs(activity.points.map(point => [point.lat, point.lng]));
     map.fitBounds(activeRoute.getBounds(), { padding: [40, 160], maxZoom: 17 });
     renderAll();
-    showToast(`GPX importado · ${activity.newCellIds.length} parcelas nuevas`);
+    const result = activity.conquestType === "area"
+      ? `${formatArea(activity.newAreaSqm)} nuevos`
+      : `${formatNumber(activity.newLinearMeters / 1000, 2)} km lineales nuevos`;
+    showToast(`GPX importado · ${result}`);
   } catch (error) {
     showToast(error.message || "No se pudo importar el archivo GPX.");
   }
@@ -821,25 +1047,19 @@ function parseGpx(text) {
 }
 
 function createActivityFromRoute(points, mode, environment, source = "gpx") {
-  const before = new Set(Object.keys(state.claimed));
-  let distanceMeters = 0;
-  points.forEach((point, index) => {
-    if (index === 0) claimCell(point.lat, point.lng, mode, point.time);
-    else {
-      distanceMeters += haversine(points[index - 1].lat, points[index - 1].lng, point.lat, point.lng);
-      claimSegment(points[index - 1], point, mode);
-    }
-  });
-  const newCellIds = Object.keys(state.claimed).filter(id => !before.has(id));
+  const distanceMeters = routeDistance(points);
   const firstTime = points[0].time > 100000000000 ? points[0].time : Date.now() - Math.max(600000, distanceMeters / 2.4 * 1000);
   const lastTime = points.at(-1).time > firstTime ? points.at(-1).time : Date.now();
   const durationSeconds = Math.max(1, Math.round((lastTime - firstTime) / 1000));
+  const id = makeId();
+  const conquest = applyRouteConquest(points, mode, state, id, distanceMeters);
   const activity = {
-    id: makeId(), mode, environment, source, demo: false,
+    id, mode, environment, source, demo: false,
     startTime: firstTime, endTime: lastTime, durationSeconds,
     distanceMeters: Math.round(distanceMeters), points,
-    newCellIds, discoveredIds: [],
-    score: scoreFor(mode, newCellIds.length, distanceMeters, 0)
+    discoveredIds: [],
+    ...conquest,
+    score: scoreForConquest(mode, conquest, distanceMeters, 0)
   };
   state.activities.unshift(activity);
   saveState();
@@ -896,14 +1116,9 @@ async function importBackup(event) {
   if (!file) return;
   try {
     const parsed = JSON.parse(await file.text());
-    if (!parsed || !Array.isArray(parsed.activities) || typeof parsed.claimed !== "object") throw new Error();
+    if (!parsed || !Array.isArray(parsed.activities)) throw new Error();
     if (!window.confirm("Esta copia sustituirá los datos actuales. ¿Continuar?")) return;
-    state = {
-      ...defaultState(),
-      ...parsed,
-      profile: { ...defaultState().profile, ...(parsed.profile || {}) },
-      active: null
-    };
+    state = normalizeState({ ...parsed, active: null });
     saveState();
     activeRoute.setLatLngs([]);
     renderAll();
@@ -914,7 +1129,7 @@ async function importBackup(event) {
 }
 
 function resetData() {
-  if (!window.confirm("¿Borrar recorridos, parcelas, puntos y logros de este dispositivo? Esta acción no se puede deshacer.")) return;
+  if (!window.confirm("¿Borrar recorridos, territorios, puntos y logros de este dispositivo? Esta acción no se puede deshacer.")) return;
   clearPositionWatch();
   if (demoTimer) clearInterval(demoTimer);
   state = defaultState();

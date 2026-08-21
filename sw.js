@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "territorio360-shell-v1";
+const CACHE_NAME = "territorio360-shell-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
