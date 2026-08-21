@@ -14,7 +14,9 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="styles.css">
   <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="social-config.js"></script>
   <script defer src="app.js"></script>
+  <script defer src="social.js"></script>
 </head>
 <body>
   <noscript>Territorio 360 necesita JavaScript para registrar el recorrido y mostrar el mapa.</noscript>
@@ -46,6 +48,7 @@
           </div>
 
           <button class="locate-button" id="locateButton" type="button" aria-label="Centrar el mapa en mi posición" title="Mi posición">⌖</button>
+          <button class="social-map-button" id="toggleSocialLayerButton" type="button" hidden aria-pressed="true">Grupo</button>
 
           <div class="session-panel" id="sessionPanel">
             <div class="session-idle" id="sessionIdle">
@@ -113,6 +116,34 @@
         </div>
       </section>
 
+      <section class="view content-view" id="communityView" data-view="community" aria-labelledby="communityTitle" hidden>
+        <div class="section-heading">
+          <div><span class="eyebrow">Beta para grupos pequeños</span><h1 id="communityTitle">Comunidad</h1></div>
+          <span class="level-badge" id="socialStatusBadge">LOCAL</span>
+        </div>
+
+        <article class="hero-card social-hero">
+          <div><span>Grupo activo</span><strong id="socialGroupName">Sin conectar</strong><small id="socialGroupDetail">Configura la beta desde tu perfil</small></div>
+          <button class="secondary-button" id="refreshSocialButton" type="button">Actualizar</button>
+        </article>
+
+        <div class="card-section">
+          <div class="card-title"><h2>Clasificación del grupo</h2><span id="socialRankingPeriod">30 DÍAS</span></div>
+          <div class="ranking-tabs" role="tablist" aria-label="Clasificación del grupo">
+            <button class="active" id="groupDistanceRankingButton" type="button" role="tab" aria-selected="true">Más kilómetros</button>
+            <button id="groupConquestRankingButton" type="button" role="tab" aria-selected="false">Más conquista</button>
+          </div>
+          <div class="ranking-list" id="groupRankingList"><div class="empty-state">Inicia sesión y entra en un grupo para ver la clasificación.</div></div>
+        </div>
+
+        <div class="card-section">
+          <div class="card-title"><h2>Actividad reciente</h2><span class="file-chip">GRUPO</span></div>
+          <div class="social-feed" id="socialFeed"><div class="empty-state">Las conquistas compartidas aparecerán aquí.</div></div>
+        </div>
+
+        <p class="privacy-note">No se publica nada sin iniciar sesión. El trazado exacto solo se comparte si cada persona lo activa expresamente.</p>
+      </section>
+
       <section class="view content-view" id="missionsView" data-view="missions" aria-labelledby="missionsTitle" hidden>
         <div class="section-heading">
           <div><span class="eyebrow">Siempre hay algo cerca</span><h1 id="missionsTitle">Misiones</h1></div>
@@ -144,6 +175,46 @@
           <div class="inline-edit"><input id="profileName" type="text" maxlength="30" value="Jesús"><button class="secondary-button" id="saveProfileButton" type="button">Guardar</button></div>
         </div>
 
+        <div class="card-section social-setup-card">
+          <div class="card-title"><h2>Grupo de prueba</h2><span class="file-chip">BETA</span></div>
+          <div id="socialDisconnectedPanel">
+            <p class="section-help">Introduce la conexión pública del servidor de prueba. La clave secreta nunca debe escribirse aquí.</p>
+            <label class="field-label" for="socialProjectUrl">URL del proyecto</label>
+            <input id="socialProjectUrl" type="url" inputmode="url" placeholder="https://xxxxx.supabase.co" autocomplete="off">
+            <label class="field-label" for="socialPublicKey">Clave pública</label>
+            <input id="socialPublicKey" type="password" placeholder="sb_publishable_… o anon key" autocomplete="off">
+            <button class="secondary-button full-button" id="saveSocialConfigButton" type="button">Guardar conexión</button>
+          </div>
+
+          <div id="socialAuthPanel" hidden>
+            <p class="section-help">Crea una cuenta o entra con la que ya tengas.</p>
+            <label class="field-label" for="socialEmail">Correo electrónico</label>
+            <input id="socialEmail" type="email" autocomplete="email" placeholder="nombre@correo.es">
+            <label class="field-label" for="socialPassword">Contraseña</label>
+            <input id="socialPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Mínimo 6 caracteres">
+            <label class="field-label" for="socialCity">Ciudad o zona</label>
+            <input id="socialCity" type="text" maxlength="50" placeholder="Zamora">
+            <div class="two-button-row"><button class="primary-button" id="socialLoginButton" type="button">Entrar</button><button class="secondary-button" id="socialSignupButton" type="button">Crear cuenta</button></div>
+          </div>
+
+          <div id="socialGroupPanel" hidden>
+            <div class="connected-user"><span id="socialUserAvatar">J</span><div><strong id="socialUserName">Explorador</strong><small id="socialUserEmail"></small></div><button class="text-button" id="socialLogoutButton" type="button">Salir</button></div>
+            <div id="socialNoGroupPanel">
+              <label class="field-label" for="socialInviteCode">Código de invitación</label>
+              <div class="inline-edit"><input id="socialInviteCode" type="text" maxlength="12" placeholder="Ej. A1B2C3D4"><button class="secondary-button" id="joinSocialGroupButton" type="button">Unirme</button></div>
+              <div class="social-divider"><span>o crear un grupo</span></div>
+              <label class="field-label" for="socialNewGroupName">Nombre del grupo</label>
+              <div class="inline-edit"><input id="socialNewGroupName" type="text" maxlength="40" placeholder="Corredores de Zamora"><button class="secondary-button" id="createSocialGroupButton" type="button">Crear</button></div>
+            </div>
+            <div id="socialActiveGroupPanel" hidden>
+              <div class="group-code-card"><span>Grupo</span><strong id="profileSocialGroupName">—</strong><small>Código para invitar: <b id="profileSocialInviteCode">—</b></small></div>
+              <label class="share-toggle"><input id="shareExactRoutes" type="checkbox"><span><strong>Compartir mi trazado en el mapa</strong><small>Desactivado por defecto. Los kilómetros y puntos sí aparecen en el ranking.</small></span></label>
+              <button class="secondary-button full-button" id="syncSocialActivitiesButton" type="button">Sincronizar mis actividades</button>
+            </div>
+          </div>
+          <p class="social-message" id="socialMessage" role="status" aria-live="polite"></p>
+        </div>
+
         <div class="card-section">
           <div class="card-title"><h2>Reloj y aplicaciones</h2><span class="file-chip">FUENTES</span></div>
           <p class="section-help">El recorrido puede grabarse en Territorio 360, en tu reloj o en otra aplicación. La conquista se calcula igual para todas las fuentes.</p>
@@ -172,13 +243,14 @@
           <button class="danger-row" id="resetButton" type="button"><span>×</span><div><strong>Borrar mis datos</strong><small>Reiniciar la aplicación</small></div></button>
         </div>
 
-        <p class="privacy-note">Tus recorridos permanecen en este dispositivo. La primera versión no publica tu ubicación ni la comparte con otras personas.</p>
+        <p class="privacy-note">El modo local guarda los recorridos en este dispositivo. En la beta, solo se sincronizan con el grupo después de iniciar sesión.</p>
       </section>
     </main>
 
     <nav class="bottom-nav" aria-label="Navegación principal">
       <button class="active" type="button" data-target="map" aria-current="page"><span aria-hidden="true">⌖</span>Mapa</button>
       <button type="button" data-target="territory"><span aria-hidden="true">◇</span>Territorio</button>
+      <button type="button" data-target="community"><span aria-hidden="true">◎</span>Grupo</button>
       <button type="button" data-target="missions"><span aria-hidden="true">✦</span>Misiones</button>
       <button type="button" data-target="profile"><span aria-hidden="true">●</span>Perfil</button>
     </nav>

@@ -45,6 +45,7 @@ let state = loadState();
 let map;
 let territoryLayer;
 let waypointLayer;
+let socialLayer;
 let activeRoute;
 let positionMarker;
 let accuracyCircle;
@@ -72,17 +73,25 @@ function init() {
   renderAll();
   restoreActiveSession();
   registerServiceWorker();
+  if (typeof initializeSocialBeta === "function") initializeSocialBeta();
 }
 
 function defaultState() {
   return {
-    version: 3,
-    profile: { name: "Jesús" },
+    version: 4,
+    profile: { name: "Jesús", city: "Zamora" },
     areaClaims: {},
     lineClaims: {},
     activities: [],
     waypoints: [],
-    active: null
+    active: null,
+    social: {
+      config: { url: "", publicKey: "" },
+      session: null,
+      group: null,
+      shareExactRoutes: false,
+      lastSyncAt: null
+    }
   };
 }
 
@@ -101,13 +110,18 @@ function normalizeState(parsed) {
   const normalized = {
     ...clean,
     ...parsed,
-    version: 3,
+    version: 4,
     profile: { ...clean.profile, ...(parsed.profile || {}) },
     areaClaims: parsed.areaClaims && typeof parsed.areaClaims === "object" ? parsed.areaClaims : {},
     lineClaims: parsed.lineClaims && typeof parsed.lineClaims === "object" ? parsed.lineClaims : {},
     activities: Array.isArray(parsed.activities) ? parsed.activities : [],
     waypoints: Array.isArray(parsed.waypoints) ? parsed.waypoints : [],
-    active: parsed.active || null
+    active: parsed.active || null,
+    social: {
+      ...clean.social,
+      ...(parsed.social || {}),
+      config: { ...clean.social.config, ...(parsed.social?.config || {}) }
+    }
   };
 
   if (Number(parsed.version || 1) < 2) {
@@ -144,6 +158,7 @@ function setupMap() {
 
   L.control.zoom({ position: "topright" }).addTo(map);
   territoryLayer = L.layerGroup().addTo(map);
+  socialLayer = L.layerGroup().addTo(map);
   waypointLayer = L.layerGroup().addTo(map);
   activeRoute = L.polyline([], { color: "#f4fff9", weight: 5, opacity: .92, lineCap: "round" }).addTo(map);
 
@@ -174,6 +189,7 @@ function bindEvents() {
   $("#backupFile").addEventListener("change", importBackup);
   $("#resetButton").addEventListener("click", resetData);
   $("#installButton").addEventListener("click", installApp);
+  if (typeof bindSocialEvents === "function") bindSocialEvents();
 
   window.addEventListener("beforeinstallprompt", event => {
     event.preventDefault();
@@ -202,6 +218,7 @@ function showView(target) {
   });
   if (target === "map") setTimeout(() => map.invalidateSize(), 60);
   else renderAll();
+  if (target === "community" && typeof refreshSocialCommunity === "function") refreshSocialCommunity();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -445,6 +462,7 @@ function finalizeActiveActivity(options = {}) {
     ? `${formatArea(activity.newAreaSqm)} nuevos`
     : `${formatNumber(activity.newLinearMeters / 1000, 2)} km lineales nuevos`;
   showToast(`Aventura guardada · ${result}`);
+  if (typeof syncActivitySocial === "function") syncActivitySocial(activity);
 }
 
 function clearPositionWatch() {
@@ -733,6 +751,7 @@ function saveWaypoint(event) {
   $("#waypointDialog").close();
   renderWaypoints();
   renderMissions();
+  if (typeof renderSocialUi === "function") renderSocialUi();
   showToast("Nuevo punto añadido al mapa.");
 }
 
@@ -810,6 +829,7 @@ function renderAll() {
   const avatarLetter = (state.profile.name || "J").trim().charAt(0).toUpperCase() || "J";
   $(".avatar").textContent = avatarLetter;
   updateSessionPanel();
+  if (typeof renderSocialUi === "function") renderSocialUi();
 }
 
 function renderMapSummary() {
@@ -1004,6 +1024,7 @@ function saveProfile() {
   saveState();
   $(".avatar").textContent = name.charAt(0).toUpperCase();
   renderRanking();
+  if (typeof updateSocialProfile === "function") updateSocialProfile();
   showToast("Perfil guardado.");
 }
 
@@ -1046,6 +1067,7 @@ async function handleGpxImport(event) {
       ? `${formatArea(activity.newAreaSqm)} nuevos`
       : `${formatNumber(activity.newLinearMeters / 1000, 2)} km lineales nuevos`;
     showToast(`${sourceLabel(activity)} importado · ${result}`);
+    if (typeof syncActivitySocial === "function") syncActivitySocial(activity);
   } catch (error) {
     showToast(error.message || "No se pudo importar el archivo de actividad.");
   }
@@ -1196,7 +1218,15 @@ function startDemo() {
 }
 
 function exportBackup() {
-  const payload = JSON.stringify({ exportedAt: new Date().toISOString(), app: "Territorio 360", ...state }, null, 2);
+  const safeState = {
+    ...state,
+    social: {
+      ...state.social,
+      session: null,
+      group: null
+    }
+  };
+  const payload = JSON.stringify({ exportedAt: new Date().toISOString(), app: "Territorio 360", ...safeState }, null, 2);
   downloadBlob(payload, `territorio-360-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
   showToast("Copia de tus datos descargada.");
 }
@@ -1209,9 +1239,14 @@ async function importBackup(event) {
     const parsed = JSON.parse(await file.text());
     if (!parsed || !Array.isArray(parsed.activities)) throw new Error();
     if (!window.confirm("Esta copia sustituirá los datos actuales. ¿Continuar?")) return;
-    state = normalizeState({ ...parsed, active: null });
+    state = normalizeState({
+      ...parsed,
+      active: null,
+      social: { ...(parsed.social || {}), session: null, group: null }
+    });
     saveState();
     activeRoute.setLatLngs([]);
+    if (typeof clearSocialRuntime === "function") clearSocialRuntime();
     renderAll();
     showToast("Copia restaurada correctamente.");
   } catch {
@@ -1226,6 +1261,7 @@ function resetData() {
   state = defaultState();
   saveState();
   activeRoute.setLatLngs([]);
+  if (typeof clearSocialRuntime === "function") clearSocialRuntime();
   renderAll();
   showToast("La aplicación vuelve a estar como nueva.");
 }

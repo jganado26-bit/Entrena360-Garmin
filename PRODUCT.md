@@ -84,9 +84,10 @@ Cada actividad importada debe guardar el proveedor y el identificador externo pa
 |---|---|
 | 0.2 | GPS, GPX, cuatro deportes, circuitos y líneas, mapa personal, dos métricas locales |
 | 0.3 | GPX y TCX multimarca, detección de origen y prevención de duplicados |
-| 0.4 | Health Connect, selector de actividades y sincronización fiable en segundo plano |
-| 0.5 | Cuentas, seguidores, privacidad, feed y rankings por ciudad |
-| 0.6 | Temporadas, equipos, rutas sugeridas, misiones compartidas y protección antifraude avanzada |
+| 0.4 beta | Cuentas, grupo privado, feed, mapa opt-in y dos rankings compartidos |
+| 0.5 | Health Connect, selector de actividades y sincronización fiable en segundo plano |
+| 0.6 | Seguidores, privacidad automática y rankings por ciudad |
+| 0.7 | Temporadas, equipos, rutas sugeridas, misiones compartidas y protección antifraude avanzada |
 
 ## Mejoras priorizadas
 
