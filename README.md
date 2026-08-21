@@ -2,7 +2,7 @@
 
 Aplicación Android y web instalable (PWA) de exploración activa inspirada en el geocaching. Convierte recorridos a pie, corriendo, nadando o en bicicleta en territorio visible sobre el mapa.
 
-## Versión 0.4 beta privada
+## Versión 0.4.1 beta privada
 
 - Registro GPS en tiempo real con distancia, duración, ritmo/velocidad y precisión.
 - Los circuitos de al menos 500 m que terminan a menos de 100 m del inicio delimitan y colorean la zona interior siguiendo el trazado real.
