@@ -3,15 +3,15 @@ plugins {
 }
 
 android {
-    namespace 'com.entrena360.garmin'
+    namespace 'com.territorio360.app'
     compileSdk 35
 
     defaultConfig {
-        applicationId "com.entrena360.garmin"
+        applicationId "com.territorio360.app"
         minSdk 26
         targetSdk 35
-        versionCode 3
-        versionName "3.0"
+        versionCode 1
+        versionName "0.1.0"
     }
 
     buildTypes {

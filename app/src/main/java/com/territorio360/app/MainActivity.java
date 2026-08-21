@@ -1,4 +1,4 @@
-package com.entrena360.garmin;
+package com.territorio360.app;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
