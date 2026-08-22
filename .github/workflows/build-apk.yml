@@ -3,7 +3,7 @@ name: Build Territorio 360 APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "entrena360-android-v2" ]
+    branches: [ "main", "entrena360-android-v2", "feature/territorio-360" ]
   pull_request:
     branches: [ "main" ]
 
