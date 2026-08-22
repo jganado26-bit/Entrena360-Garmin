@@ -1,10 +1,12 @@
 "use strict";
 
-const CACHE_NAME = "territorio360-shell-v5";
+const CACHE_NAME = "territorio360-shell-v6";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./vendor/leaflet/leaflet.css",
+  "./vendor/leaflet/leaflet.js",
   "./app.js",
   "./social-config.js",
   "./social.js",

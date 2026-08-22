@@ -9,11 +9,10 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="preconnect" href="https://unpkg.com">
   <link rel="preconnect" href="https://tile.openstreetmap.org">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="styles.css">
-  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="vendor/leaflet/leaflet.js"></script>
   <script defer src="social-config.js"></script>
   <script defer src="app.js"></script>
   <script defer src="social.js"></script>
@@ -141,7 +140,7 @@
           <div class="social-feed" id="socialFeed"><div class="empty-state">Las conquistas compartidas aparecerán aquí.</div></div>
         </div>
 
-        <p class="privacy-note">No se publica nada sin iniciar sesión. El trazado exacto solo se comparte si cada persona lo activa expresamente.</p>
+        <p class="privacy-note">No se publica nada sin una elección expresa. Los trazados compartidos ocultan el inicio y el final y reducen su precisión.</p>
       </section>
 
       <section class="view content-view" id="missionsView" data-view="missions" aria-labelledby="missionsTitle" hidden>
@@ -187,13 +186,14 @@
           </div>
 
           <div id="socialAuthPanel" hidden>
-            <p class="section-help">Crea una cuenta o entra con la que ya tengas.</p>
+            <p class="section-help">Crea una cuenta o entra con la que ya tengas. La beta social está limitada a mayores de 18 años.</p>
             <label class="field-label" for="socialEmail">Correo electrónico</label>
             <input id="socialEmail" type="email" autocomplete="email" placeholder="nombre@correo.es">
             <label class="field-label" for="socialPassword">Contraseña</label>
             <input id="socialPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Mínimo 6 caracteres">
             <label class="field-label" for="socialCity">Ciudad o zona</label>
             <input id="socialCity" type="text" maxlength="50" placeholder="Zamora">
+            <p class="field-help">Indica solo la ciudad o zona general. No escribas tu dirección.</p>
             <div class="two-button-row"><button class="primary-button" id="socialLoginButton" type="button">Entrar</button><button class="secondary-button" id="socialSignupButton" type="button">Crear cuenta</button></div>
           </div>
 
@@ -208,7 +208,13 @@
             </div>
             <div id="socialActiveGroupPanel" hidden>
               <div class="group-code-card"><span>Grupo</span><strong id="profileSocialGroupName">—</strong><small>Código para invitar: <b id="profileSocialInviteCode">—</b></small></div>
-              <label class="share-toggle"><input id="shareExactRoutes" type="checkbox"><span><strong>Compartir mi trazado en el mapa</strong><small>Desactivado por defecto. Los kilómetros y puntos sí aparecen en el ranking.</small></span></label>
+              <label class="share-toggle"><input id="shareProtectedRoutes" type="checkbox"><span><strong>Compartir trazado protegido</strong><small>Desactivado por defecto. Se ocultan automáticamente el inicio y el final.</small></span></label>
+              <label class="field-label" for="routePrivacyRadius">Zona oculta al inicio y al final</label>
+              <select id="routePrivacyRadius">
+                <option value="300">300 metros</option>
+                <option value="500" selected>500 metros</option>
+                <option value="800">800 metros</option>
+              </select>
               <button class="secondary-button full-button" id="syncSocialActivitiesButton" type="button">Sincronizar mis actividades</button>
             </div>
           </div>
@@ -237,10 +243,25 @@
           <button class="secondary-button full-button" id="demoButton" type="button">Probar recorrido simulado</button>
         </div>
 
+        <div class="card-section privacy-center">
+          <div class="card-title"><h2>Privacidad y mis datos</h2><span class="file-chip" id="privacyStatusChip">PENDIENTE</span></div>
+          <p class="section-help">Tú decides qué información sale del teléfono. La ubicación exacta nunca se publica por defecto.</p>
+          <label class="share-toggle"><input id="shareGroupStats" type="checkbox"><span><strong>Compartir estadísticas con mi grupo</strong><small>Deporte, fecha, kilómetros y conquista. No incluye el GPS exacto.</small></span></label>
+          <label class="share-toggle"><input id="appearInRankings" type="checkbox"><span><strong>Aparecer en las clasificaciones</strong><small>Usa tus estadísticas compartidas para ordenar los rankings.</small></span></label>
+          <div class="privacy-actions">
+            <button class="secondary-button" id="openPrivacyButton" type="button">Política de privacidad</button>
+            <button class="secondary-button" id="openTermsButton" type="button">Condiciones de uso</button>
+            <button class="secondary-button" id="reviewPrivacyButton" type="button">Revisar permisos</button>
+            <button class="secondary-button" id="exportPrivacyDataButton" type="button">Descargar mis datos</button>
+          </div>
+          <button class="danger-button full-button" id="deleteOnlineAccountButton" type="button" hidden>Eliminar mi cuenta y datos online</button>
+          <p class="privacy-summary" id="privacySummary">Todavía no has revisado la información de privacidad.</p>
+        </div>
+
         <div class="card-section settings-list">
           <button id="importBackupButton" type="button"><span>↥</span><div><strong>Restaurar copia</strong><small>Importar datos de Territorio 360</small></div></button>
           <button id="backupButton" type="button"><span>↧</span><div><strong>Guardar copia</strong><small>Descargar todos tus datos</small></div></button>
-          <button class="danger-row" id="resetButton" type="button"><span>×</span><div><strong>Borrar mis datos</strong><small>Reiniciar la aplicación</small></div></button>
+          <button class="danger-row" id="resetButton" type="button"><span>×</span><div><strong>Borrar datos del dispositivo</strong><small>No elimina la cuenta online</small></div></button>
         </div>
 
         <p class="privacy-note">El modo local guarda los recorridos en este dispositivo. En la beta, solo se sincronizan con el grupo después de iniciar sesión.</p>
@@ -334,6 +355,58 @@
       </div>
       <p class="dialog-note">La conexión automática llegará mediante Health Connect y APIs autorizadas. El importador evita que el mismo archivo vuelva a sumar si se selecciona más de una vez.</p>
       <button class="primary-button full-button" value="close" type="submit">Entendido</button>
+    </form>
+  </dialog>
+
+  <dialog id="privacyOnboardingDialog" class="app-dialog legal-dialog">
+    <form id="privacyOnboardingForm">
+      <span class="eyebrow">Privacidad desde el inicio</span>
+      <h2>Antes de empezar</h2>
+      <p>Territorio 360 utiliza el GPS para calcular tus recorridos y conquistas. En modo local, estos datos permanecen en este dispositivo.</p>
+      <div class="privacy-principles">
+        <p><b>📍</b><span><strong>Ubicación bajo tu control</strong><small>No compartimos rutas sin una decisión expresa.</small></span></p>
+        <p><b>🏠</b><span><strong>Inicio y final protegidos</strong><small>Si compartes un trazado, ocultamos sus extremos.</small></span></p>
+        <p><b>🗑️</b><span><strong>Puedes borrar y descargar</strong><small>Control disponible desde Perfil → Privacidad.</small></span></p>
+      </div>
+      <label class="consent-check"><input id="confirmAdult" type="checkbox" required><span>Confirmo que tengo 18 años o más.</span></label>
+      <label class="consent-check"><input id="acceptLegal" type="checkbox" required><span>He leído y acepto la <button type="button" data-open-legal="privacy">política de privacidad</button> y las <button type="button" data-open-legal="terms">condiciones de uso</button>.</span></label>
+      <label class="consent-check"><input id="acknowledgeLocation" type="checkbox" required><span>Entiendo que el GPS preciso es necesario para registrar una aventura y que se guardará localmente hasta que lo elimine.</span></label>
+      <p class="dialog-note">Compartir estadísticas, rankings y trazados es opcional y se configura después en el centro de privacidad.</p>
+      <button class="primary-button full-button" type="submit">Aceptar y continuar</button>
+    </form>
+  </dialog>
+
+  <dialog id="privacyPolicyDialog" class="app-dialog legal-dialog">
+    <form method="dialog">
+      <button class="dialog-close" value="close" aria-label="Cerrar" type="submit">×</button>
+      <span class="eyebrow">Versión beta · 22/08/2026</span>
+      <h2>Política de privacidad</h2>
+      <div class="legal-copy">
+        <section><h3>1. Responsable</h3><p><strong id="legalControllerName">Responsable de la beta Territorio 360</strong><br><span id="legalControllerContact">Contacto facilitado por el organizador del grupo.</span></p></section>
+        <section><h3>2. Datos tratados</h3><p>Alias, correo de cuenta, ciudad aproximada, modalidad deportiva, fechas, distancia, puntos, parcelas conquistadas, registro de preferencias y, solo si se autoriza, un trazado protegido. El recorrido GPS completo permanece local por defecto.</p></section>
+        <section><h3>3. Finalidades y base jurídica</h3><p>La cuenta, el registro deportivo y el cálculo de conquistas se utilizan para prestar el servicio solicitado. Compartir estadísticas, aparecer en rankings y mostrar un trazado son opciones separadas basadas en decisiones revocables del usuario.</p></section>
+        <section><h3>4. Destinatarios</h3><p>Los miembros del grupo privado pueden ver los datos que cada usuario haya elegido compartir. El alojamiento online actúa como proveedor técnico. El mapa consulta teselas de OpenStreetMap, que puede recibir la dirección IP necesaria para responder.</p></section>
+        <section><h3>5. Conservación</h3><p>Los datos locales se conservan hasta que el usuario los elimina. Las estadísticas online se retiran al desactivar la opción de compartir. Los registros de las decisiones de privacidad se conservan mientras exista la cuenta. Las copias de seguridad del proveedor pueden tardar un periodo limitado en rotarse.</p></section>
+        <section><h3>6. Derechos</h3><p>Desde esta aplicación se pueden descargar datos, retirar opciones, borrar actividades y solicitar la eliminación de la cuenta. También se puede ejercer acceso, rectificación, supresión, oposición, limitación y portabilidad contactando con el responsable, y reclamar ante la Agencia Española de Protección de Datos.</p></section>
+        <section><h3>7. Seguridad y menores</h3><p>La beta utiliza conexiones cifradas, control de acceso por usuario y grupos por invitación. No admite menores de 18 años ni trata todavía datos médicos o de salud.</p></section>
+      </div>
+      <button class="primary-button full-button" value="close" type="submit">Cerrar</button>
+    </form>
+  </dialog>
+
+  <dialog id="termsDialog" class="app-dialog legal-dialog">
+    <form method="dialog">
+      <button class="dialog-close" value="close" aria-label="Cerrar" type="submit">×</button>
+      <span class="eyebrow">Beta privada</span>
+      <h2>Condiciones de uso</h2>
+      <div class="legal-copy">
+        <section><h3>Prueba limitada</h3><p>Territorio 360 es una versión de prueba para un grupo pequeño. Puede contener errores, cambiar de funcionamiento o perder datos durante las actualizaciones.</p></section>
+        <section><h3>Uso deportivo seguro</h3><p>No mires ni manipules la aplicación mientras conduces o circulas en bicicleta. Respeta las normas de tráfico, las propiedades privadas, las restricciones ambientales y las condiciones del medio acuático.</p></section>
+        <section><h3>Sin diagnóstico médico</h3><p>Las distancias, ritmos y futuros indicadores deportivos son orientativos. La aplicación no ofrece diagnóstico, tratamiento ni sustitución de profesionales sanitarios.</p></section>
+        <section><h3>Juego limpio y convivencia</h3><p>No se permiten rutas falsificadas, suplantación, acoso, publicación de ubicaciones de terceros ni uso de códigos de grupo sin autorización.</p></section>
+        <section><h3>Cuenta y eliminación</h3><p>Cada participante protege su contraseña y puede dejar la prueba eliminando su cuenta y sus datos. El organizador puede cerrar un grupo ante problemas de seguridad o uso indebido.</p></section>
+      </div>
+      <button class="primary-button full-button" value="close" type="submit">Cerrar</button>
     </form>
   </dialog>
 

@@ -2,7 +2,7 @@
 
 Aplicación Android y web instalable (PWA) de exploración activa inspirada en el geocaching. Convierte recorridos a pie, corriendo, nadando o en bicicleta en territorio visible sobre el mapa.
 
-## Versión 0.4.1 beta privada
+## Versión 0.5.0 beta privada
 
 - Registro GPS en tiempo real con distancia, duración, ritmo/velocidad y precisión.
 - Los circuitos de al menos 500 m que terminan a menos de 100 m del inicio delimitan y colorean la zona interior siguiendo el trazado real.
@@ -20,6 +20,12 @@ Aplicación Android y web instalable (PWA) de exploración activa inspirada en e
 - Cuentas y grupos privados mediante código de invitación.
 - Ranking del grupo separado entre kilómetros totales y conquista nueva.
 - Actividad reciente y capa de mapa compartida con consentimiento explícito.
+- Pantalla inicial de información y aceptación para participantes adultos.
+- Centro de privacidad con controles separados para estadísticas, rankings y trazado.
+- Protección automática de 300, 500 u 800 metros en los extremos de las rutas compartidas y reducción de precisión.
+- Descarga de datos, borrado individual de actividades y eliminación de la cuenta online.
+- Registro de preferencias en el backend, condiciones de uso y política de privacidad integradas.
+- Librería de mapas incluida en la APK para evitar cargar código desde un CDN externo.
 
 Para activar la prueba social, sigue [BETA_SETUP.md](BETA_SETUP.md). Sin configurar el servidor, la aplicación conserva todo el funcionamiento individual.
 
@@ -39,7 +45,7 @@ El flujo de GitHub Actions publica la rama `main` en GitHub Pages. En la configu
 
 ## Evolución prevista
 
-La versión actual permite probar cuentas, un grupo privado y clasificaciones compartidas con un backend Supabase propio. La siguiente fase conectará Health Connect con autorización explícita para cada ruta importada. Las conexiones automáticas directas con COROS, Suunto u otros fabricantes requieren registrar Territorio 360 como plataforma, completar sus procesos de acceso y guardar las credenciales en un backend seguro. Antes de abrir la parte social al público habrá que añadir privacidad automática del domicilio, moderación y protección frente a falsificación de GPS.
+La versión actual permite probar cuentas, un grupo privado y clasificaciones compartidas con un backend Supabase propio. La siguiente fase conectará Health Connect con autorización explícita para cada ruta importada. Las conexiones automáticas directas con COROS, Suunto u otros fabricantes requieren registrar Territorio 360 como plataforma, completar sus procesos de acceso y guardar las credenciales en un backend seguro. Antes de abrir la parte social al público habrá que completar la identidad legal del responsable, revisar la EIPD, añadir moderación y reforzar la protección frente a falsificación de GPS.
 
 ## Mapas y privacidad
 

@@ -9,6 +9,12 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
+alter table public.profiles add column if not exists legal_version text;
+alter table public.profiles add column if not exists legal_accepted_at timestamptz;
+alter table public.profiles add column if not exists adult_confirmed_at timestamptz;
+alter table public.profiles add column if not exists share_group_stats boolean not null default false;
+alter table public.profiles add column if not exists ranking_enabled boolean not null default false;
+
 create table if not exists public.groups (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(name) between 1 and 40),
@@ -16,6 +22,11 @@ create table if not exists public.groups (
   created_by uuid not null references public.profiles(id) on delete restrict,
   created_at timestamptz not null default now()
 );
+
+alter table public.groups drop constraint if exists groups_created_by_fkey;
+alter table public.groups
+  add constraint groups_created_by_fkey
+  foreign key (created_by) references public.profiles(id) on delete cascade;
 
 create table if not exists public.group_members (
   group_id uuid not null references public.groups(id) on delete cascade,
@@ -49,9 +60,25 @@ create table if not exists public.activities (
   unique (user_id, client_activity_id)
 );
 
+alter table public.activities add column if not exists ranking_enabled boolean not null default false;
+alter table public.activities add column if not exists public_path_protected boolean not null default true;
+
+create table if not exists public.consent_events (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  legal_version text not null check (char_length(legal_version) between 1 and 80),
+  essential_service boolean not null default false,
+  share_group_stats boolean not null default false,
+  ranking_enabled boolean not null default false,
+  protected_route boolean not null default false,
+  privacy_radius_m integer not null default 500 check (privacy_radius_m in (300, 500, 800)),
+  recorded_at timestamptz not null default now()
+);
+
 create index if not exists group_members_user_idx on public.group_members(user_id);
 create index if not exists activities_group_time_idx on public.activities(group_id, start_time desc);
 create index if not exists activities_user_idx on public.activities(user_id);
+create index if not exists consent_events_user_time_idx on public.consent_events(user_id, recorded_at desc);
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -109,6 +136,7 @@ alter table public.profiles enable row level security;
 alter table public.groups enable row level security;
 alter table public.group_members enable row level security;
 alter table public.activities enable row level security;
+alter table public.consent_events enable row level security;
 
 drop policy if exists "profiles visible to same group" on public.profiles;
 create policy "profiles visible to same group"
@@ -156,6 +184,16 @@ drop policy if exists "users delete own group activities" on public.activities;
 create policy "users delete own group activities"
 on public.activities for delete to authenticated
 using ((select auth.uid()) = user_id and private.is_group_member(group_id));
+
+drop policy if exists "users read own consent events" on public.consent_events;
+create policy "users read own consent events"
+on public.consent_events for select to authenticated
+using ((select auth.uid()) = user_id);
+
+drop policy if exists "users record own consent events" on public.consent_events;
+create policy "users record own consent events"
+on public.consent_events for insert to authenticated
+with check ((select auth.uid()) = user_id);
 
 create or replace function public.create_trial_group(p_name text)
 returns jsonb
@@ -229,18 +267,36 @@ begin
 end;
 $$;
 
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  current_user_id uuid := (select auth.uid());
+begin
+  if current_user_id is null then raise exception 'Debes iniciar sesión'; end if;
+  delete from auth.users where id = current_user_id;
+end;
+$$;
+
 revoke all on schema private from public, anon, authenticated;
 revoke all on function private.is_group_member(uuid) from public, anon;
 revoke all on function private.shares_group(uuid) from public, anon;
 grant execute on function private.is_group_member(uuid) to authenticated;
 grant execute on function private.shares_group(uuid) to authenticated;
 revoke all on function public.handle_new_user() from public, anon, authenticated;
-revoke all on public.profiles, public.groups, public.group_members, public.activities from anon, authenticated;
+revoke all on public.profiles, public.groups, public.group_members, public.activities, public.consent_events from anon, authenticated;
 grant usage on schema public to authenticated;
 grant select, insert, update on public.profiles to authenticated;
 grant select on public.groups, public.group_members to authenticated;
 grant select, insert, update, delete on public.activities to authenticated;
+grant select, insert on public.consent_events to authenticated;
+grant usage, select on sequence public.consent_events_id_seq to authenticated;
 revoke all on function public.create_trial_group(text) from public, anon;
 revoke all on function public.join_group_by_code(text) from public, anon;
+revoke all on function public.delete_my_account() from public, anon;
 grant execute on function public.create_trial_group(text) to authenticated;
 grant execute on function public.join_group_by_code(text) to authenticated;
+grant execute on function public.delete_my_account() to authenticated;

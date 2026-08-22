@@ -7,6 +7,7 @@ const LOOP_MIN_DISTANCE_METERS = 500;
 const LOOP_CLOSE_DISTANCE_METERS = 100;
 const DEFAULT_CENTER = [41.5035, -5.7460];
 const MAX_TRACK_POINTS = 5000;
+const LEGAL_VERSION = "2026-08-22-beta-1";
 
 const MODE_DATA = {
   run:  { label: "Correr",    icon: "🏃", color: "#c9f35b", multiplier: 1,    maxSpeed: 12 },
@@ -74,11 +75,13 @@ function init() {
   restoreActiveSession();
   registerServiceWorker();
   if (typeof initializeSocialBeta === "function") initializeSocialBeta();
+  renderPrivacyCenter();
+  window.setTimeout(showPrivacyOnboardingIfNeeded, 120);
 }
 
 function defaultState() {
   return {
-    version: 4,
+    version: 5,
     profile: { name: "Jesús", city: "Zamora" },
     areaClaims: {},
     lineClaims: {},
@@ -89,8 +92,18 @@ function defaultState() {
       config: { url: "", publicKey: "" },
       session: null,
       group: null,
-      shareExactRoutes: false,
       lastSyncAt: null
+    },
+    privacy: {
+      acceptedVersion: "",
+      acceptedAt: null,
+      adultConfirmed: false,
+      locationAcknowledged: false,
+      shareGroupStats: false,
+      appearInRankings: false,
+      shareProtectedRoutes: false,
+      routePrivacyMeters: 500,
+      updatedAt: null
     }
   };
 }
@@ -110,7 +123,7 @@ function normalizeState(parsed) {
   const normalized = {
     ...clean,
     ...parsed,
-    version: 4,
+    version: 5,
     profile: { ...clean.profile, ...(parsed.profile || {}) },
     areaClaims: parsed.areaClaims && typeof parsed.areaClaims === "object" ? parsed.areaClaims : {},
     lineClaims: parsed.lineClaims && typeof parsed.lineClaims === "object" ? parsed.lineClaims : {},
@@ -121,8 +134,23 @@ function normalizeState(parsed) {
       ...clean.social,
       ...(parsed.social || {}),
       config: { ...clean.social.config, ...(parsed.social?.config || {}) }
+    },
+    privacy: {
+      ...clean.privacy,
+      ...(parsed.privacy || {})
     }
   };
+
+  if (parsed.social?.shareExactRoutes && !parsed.privacy?.shareProtectedRoutes) {
+    normalized.privacy.shareProtectedRoutes = false;
+  }
+  normalized.privacy.routePrivacyMeters = [300, 500, 800].includes(Number(normalized.privacy.routePrivacyMeters))
+    ? Number(normalized.privacy.routePrivacyMeters)
+    : 500;
+  if (!normalized.privacy.shareGroupStats) {
+    normalized.privacy.appearInRankings = false;
+    normalized.privacy.shareProtectedRoutes = false;
+  }
 
   if (Number(parsed.version || 1) < 2) {
     normalized.areaClaims = {};
@@ -140,6 +168,113 @@ function saveState() {
   } catch (error) {
     console.error(error);
     showToast("No queda espacio para guardar más recorridos en este dispositivo.");
+  }
+}
+
+function privacyReady() {
+  return state.privacy.acceptedVersion === LEGAL_VERSION
+    && Boolean(state.privacy.acceptedAt)
+    && state.privacy.adultConfirmed
+    && state.privacy.locationAcknowledged;
+}
+
+function ensurePrivacyReady() {
+  if (privacyReady()) return true;
+  showPrivacyOnboardingIfNeeded(true);
+  showToast("Revisa primero la información de privacidad.");
+  return false;
+}
+
+function showPrivacyOnboardingIfNeeded(force = false) {
+  const dialog = $("#privacyOnboardingDialog");
+  if (!dialog || dialog.open || (!force && privacyReady())) return;
+  $("#confirmAdult").checked = Boolean(state.privacy.adultConfirmed);
+  $("#acceptLegal").checked = state.privacy.acceptedVersion === LEGAL_VERSION;
+  $("#acknowledgeLocation").checked = Boolean(state.privacy.locationAcknowledged);
+  dialog.showModal();
+}
+
+function openPrivacyReview() {
+  showPrivacyOnboardingIfNeeded(true);
+}
+
+function acceptPrivacyOnboarding(event) {
+  event.preventDefault();
+  if (!$("#confirmAdult").checked || !$("#acceptLegal").checked || !$("#acknowledgeLocation").checked) {
+    showToast("Debes confirmar los tres puntos para continuar.");
+    return;
+  }
+  const now = new Date().toISOString();
+  state.privacy.acceptedVersion = LEGAL_VERSION;
+  state.privacy.acceptedAt = state.privacy.acceptedAt || now;
+  state.privacy.adultConfirmed = true;
+  state.privacy.locationAcknowledged = true;
+  state.privacy.updatedAt = now;
+  saveState();
+  $("#privacyOnboardingDialog").close();
+  renderPrivacyCenter();
+  if (typeof recordPrivacyPreferences === "function") recordPrivacyPreferences(true);
+  showToast("Preferencias de privacidad guardadas.");
+}
+
+function legalConfig() {
+  const configured = window.TERRITORIO_LEGAL_CONFIG || {};
+  return {
+    controllerName: String(configured.controllerName || "Responsable de la beta Territorio 360").trim(),
+    contact: String(configured.contact || "Contacto facilitado por el organizador del grupo.").trim(),
+    ready: Boolean(configured.controllerName && configured.contact)
+      && configured.controllerName !== "Responsable de la beta Territorio 360"
+      && configured.contact !== "Contacto facilitado por el organizador del grupo."
+  };
+}
+
+function legalConfigReady() {
+  return legalConfig().ready;
+}
+
+function openLegalDialog(type) {
+  const legal = legalConfig();
+  $("#legalControllerName").textContent = legal.controllerName;
+  $("#legalControllerContact").textContent = legal.contact;
+  const dialog = type === "terms" ? $("#termsDialog") : $("#privacyPolicyDialog");
+  if (!dialog.open) dialog.showModal();
+}
+
+function renderPrivacyCenter() {
+  if (!$("#privacyStatusChip")) return;
+  const ready = privacyReady();
+  $("#privacyStatusChip").textContent = ready ? "REVISADO" : "PENDIENTE";
+  $("#shareGroupStats").checked = Boolean(state.privacy.shareGroupStats);
+  $("#appearInRankings").checked = Boolean(state.privacy.appearInRankings);
+  $("#appearInRankings").disabled = !state.privacy.shareGroupStats;
+  $("#privacySummary").textContent = ready
+    ? `Información aceptada el ${formatDate(state.privacy.acceptedAt)}. Estadísticas del grupo: ${state.privacy.shareGroupStats ? "activadas" : "desactivadas"}. Rankings: ${state.privacy.appearInRankings ? "activados" : "desactivados"}.`
+    : "Todavía no has revisado la información de privacidad.";
+  if (ready && !legalConfigReady()) {
+    $("#privacySummary").textContent += " El registro online permanecerá bloqueado hasta identificar al responsable y su contacto.";
+  }
+  const online = typeof hasSocialSession === "function" && hasSocialSession();
+  $("#deleteOnlineAccountButton").hidden = !online;
+}
+
+async function handlePrivacyPreferenceChange() {
+  if (!ensurePrivacyReady()) {
+    renderPrivacyCenter();
+    return;
+  }
+  state.privacy.shareGroupStats = Boolean($("#shareGroupStats").checked);
+  state.privacy.appearInRankings = state.privacy.shareGroupStats && Boolean($("#appearInRankings").checked);
+  if (!state.privacy.shareGroupStats) state.privacy.shareProtectedRoutes = false;
+  state.privacy.updatedAt = new Date().toISOString();
+  saveState();
+  renderPrivacyCenter();
+  if (typeof renderSocialUi === "function") renderSocialUi();
+  if (typeof handlePrivacyPreferencesChanged === "function") {
+    try {
+      await handlePrivacyPreferencesChanged();
+    } catch (error) {
+      showToast(`Preferencia guardada en el teléfono; falta actualizar el grupo: ${friendlySocialError(error)}`);
+    }
   }
 }
 
@@ -167,7 +302,10 @@ function setupMap() {
 
 function bindEvents() {
   $$(".bottom-nav button").forEach(button => button.addEventListener("click", () => showView(button.dataset.target)));
-  $("#openStartButton").addEventListener("click", () => $("#startDialog").showModal());
+  $("#openStartButton").addEventListener("click", () => {
+    if (!ensurePrivacyReady()) return;
+    $("#startDialog").showModal();
+  });
   $("#startForm").addEventListener("submit", handleStartForm);
   $("#pauseButton").addEventListener("click", togglePause);
   $("#stopButton").addEventListener("click", () => finalizeActiveActivity());
@@ -175,11 +313,14 @@ function bindEvents() {
   $("#addWaypointButton").addEventListener("click", () => openWaypointDialog(map.getCenter()));
   $("#waypointForm").addEventListener("submit", saveWaypoint);
   $("#waypointList").addEventListener("click", handleWaypointListClick);
+  $("#activityList").addEventListener("click", handleActivityListClick);
   $("#saveProfileButton").addEventListener("click", saveProfile);
   $("#distanceRankingButton").addEventListener("click", () => setRankingMode("distance"));
   $("#conquestRankingButton").addEventListener("click", () => setRankingMode("conquest"));
   $("#connectionInfoButton").addEventListener("click", () => $("#connectionDialog").showModal());
-  $("#openImportButton").addEventListener("click", () => $("#importDialog").showModal());
+  $("#openImportButton").addEventListener("click", () => {
+    if (ensurePrivacyReady()) $("#importDialog").showModal();
+  });
   $("#gpxFile").addEventListener("change", updateGpxFileName);
   $("#importForm").addEventListener("submit", handleGpxImport);
   $("#demoButton").addEventListener("click", startDemo);
@@ -188,6 +329,18 @@ function bindEvents() {
   $("#importBackupButton").addEventListener("click", () => $("#backupFile").click());
   $("#backupFile").addEventListener("change", importBackup);
   $("#resetButton").addEventListener("click", resetData);
+  $("#privacyOnboardingForm").addEventListener("submit", acceptPrivacyOnboarding);
+  $$('[data-open-legal="privacy"]').forEach(button => button.addEventListener("click", () => openLegalDialog("privacy")));
+  $$('[data-open-legal="terms"]').forEach(button => button.addEventListener("click", () => openLegalDialog("terms")));
+  $("#openPrivacyButton").addEventListener("click", () => openLegalDialog("privacy"));
+  $("#openTermsButton").addEventListener("click", () => openLegalDialog("terms"));
+  $("#reviewPrivacyButton").addEventListener("click", openPrivacyReview);
+  $("#exportPrivacyDataButton").addEventListener("click", exportPrivacyData);
+  $("#shareGroupStats").addEventListener("change", handlePrivacyPreferenceChange);
+  $("#appearInRankings").addEventListener("change", handlePrivacyPreferenceChange);
+  $("#deleteOnlineAccountButton").addEventListener("click", () => {
+    if (typeof deleteOnlineAccount === "function") deleteOnlineAccount();
+  });
   $("#installButton").addEventListener("click", installApp);
   if (typeof bindSocialEvents === "function") bindSocialEvents();
 
@@ -231,6 +384,10 @@ function handleStartForm(event) {
   }
   if (state.active) {
     showToast("Ya hay una aventura en marcha.");
+    $("#startDialog").close();
+    return;
+  }
+  if (!ensurePrivacyReady()) {
     $("#startDialog").close();
     return;
   }
@@ -356,6 +513,7 @@ function handlePositionError(error) {
 }
 
 function locateOnce() {
+  if (!ensurePrivacyReady()) return;
   if (!("geolocation" in navigator)) {
     showToast("Este dispositivo no ofrece ubicación GPS.");
     return;
@@ -819,6 +977,45 @@ function handleWaypointListClick(event) {
   renderMissions();
 }
 
+async function handleActivityListClick(event) {
+  const button = event.target.closest("[data-activity-delete]");
+  if (!button) return;
+  const activity = state.activities.find(item => String(item.id) === button.dataset.activityDelete);
+  if (!activity || !window.confirm("¿Eliminar esta actividad, su recorrido y la conquista asociada?")) return;
+  if (activity.socialSyncedAt && (typeof hasSocialSession !== "function" || !hasSocialSession())) {
+    showToast("Inicia sesión primero para eliminar también la copia del grupo.");
+    return;
+  }
+  if (typeof deleteSocialActivity === "function" && hasSocialSession() && !activity.demo) {
+    try {
+      await deleteSocialActivity(activity.id);
+    } catch (error) {
+      showToast(`No se pudo borrar del grupo: ${friendlySocialError(error)}`);
+      return;
+    }
+  }
+  state.activities = state.activities.filter(item => String(item.id) !== String(activity.id));
+  rebuildConquestState();
+  saveState();
+  activeRoute.setLatLngs([]);
+  renderAll();
+  showToast("Actividad eliminada de este dispositivo.");
+}
+
+function rebuildConquestState() {
+  state.areaClaims = {};
+  state.lineClaims = {};
+  [...state.activities]
+    .sort((a, b) => Number(a.startTime || 0) - Number(b.startTime || 0))
+    .forEach(activity => {
+      const points = Array.isArray(activity.points) ? activity.points : [];
+      if (points.length < 2) return;
+      const conquest = applyRouteConquest(points, activity.mode || "run", state, activity.id, activity.distanceMeters);
+      Object.assign(activity, conquest);
+      activity.score = scoreForConquest(activity.mode, conquest, activity.distanceMeters, activity.discoveredIds?.length || 0);
+    });
+}
+
 function renderAll() {
   renderTerritoryOnMap();
   renderWaypoints();
@@ -829,6 +1026,7 @@ function renderAll() {
   const avatarLetter = (state.profile.name || "J").trim().charAt(0).toUpperCase() || "J";
   $(".avatar").textContent = avatarLetter;
   updateSessionPanel();
+  renderPrivacyCenter();
   if (typeof renderSocialUi === "function") renderSocialUi();
 }
 
@@ -880,6 +1078,7 @@ function renderTerritoryDashboard() {
       <div class="activity-icon">${mode.icon}</div>
       <div class="activity-copy"><strong>${mode.label} · ${formatDate(activity.startTime)}</strong><span>${source} · ${formatDuration(activity.durationSeconds)} · ${conquest}</span></div>
       <div class="activity-value"><strong>${formatNumber((activity.distanceMeters || 0) / 1000, 2)} km</strong><span>+${formatInteger(activity.score || 0)} pts</span></div>
+      <button class="mini-delete" type="button" data-activity-delete="${escapeHtml(activity.id)}" aria-label="Eliminar actividad">×</button>
     </article>`;
   }).join("");
   renderRanking();
@@ -1040,6 +1239,10 @@ async function handleGpxImport(event) {
   }
   const file = $("#gpxFile").files[0];
   if (!file) return;
+  if (!ensurePrivacyReady()) {
+    $("#importDialog").close();
+    return;
+  }
   try {
     const text = await file.text();
     const parsedRoute = parseActivityFile(text, file.name);
@@ -1180,6 +1383,7 @@ function createActivityFromRoute(points, mode, environment, source = "gpx", impo
 }
 
 function startDemo() {
+  if (!ensurePrivacyReady()) return;
   if (state.active) {
     showToast("Finaliza primero la aventura actual.");
     return;
@@ -1231,6 +1435,19 @@ function exportBackup() {
   showToast("Copia de tus datos descargada.");
 }
 
+async function exportPrivacyData() {
+  if (typeof exportSocialData !== "function" || !hasSocialSession()) {
+    exportBackup();
+    return;
+  }
+  try {
+    await exportSocialData();
+    showToast("Tus datos locales y online se han descargado.");
+  } catch (error) {
+    showToast(`No se pudo completar la descarga online: ${friendlySocialError(error)}`);
+  }
+}
+
 async function importBackup(event) {
   const file = event.target.files[0];
   event.target.value = "";
@@ -1255,7 +1472,7 @@ async function importBackup(event) {
 }
 
 function resetData() {
-  if (!window.confirm("¿Borrar recorridos, territorios, puntos y logros de este dispositivo? Esta acción no se puede deshacer.")) return;
+  if (!window.confirm("¿Borrar recorridos, territorios, puntos, permisos y logros de este dispositivo? Esta acción no elimina la cuenta online.")) return;
   clearPositionWatch();
   if (demoTimer) clearInterval(demoTimer);
   state = defaultState();
@@ -1264,6 +1481,7 @@ function resetData() {
   if (typeof clearSocialRuntime === "function") clearSocialRuntime();
   renderAll();
   showToast("La aplicación vuelve a estar como nueva.");
+  window.setTimeout(() => showPrivacyOnboardingIfNeeded(true), 200);
 }
 
 async function installApp() {

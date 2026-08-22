@@ -25,7 +25,8 @@ function bindSocialEvents() {
   $("#refreshSocialButton")?.addEventListener("click", refreshSocialCommunity);
   $("#groupDistanceRankingButton")?.addEventListener("click", () => setGroupRankingMode("distance"));
   $("#groupConquestRankingButton")?.addEventListener("click", () => setGroupRankingMode("conquest"));
-  $("#shareExactRoutes")?.addEventListener("change", handleRouteSharingChange);
+  $("#shareProtectedRoutes")?.addEventListener("change", handleRouteSharingChange);
+  $("#routePrivacyRadius")?.addEventListener("change", handleRoutePrivacyRadiusChange);
   $("#toggleSocialLayerButton")?.addEventListener("click", toggleSocialMapLayer);
 }
 
@@ -128,6 +129,11 @@ async function refreshSocialSession() {
 }
 
 async function socialSignup() {
+  if (!ensurePrivacyReady()) return;
+  if (!legalConfigReady()) {
+    setSocialMessage("El organizador debe completar su identidad y contacto legal antes de abrir el registro online.", "error");
+    return;
+  }
   const credentials = readSocialCredentials();
   if (!credentials) return;
   await withSocialBusy(async () => {
@@ -146,6 +152,7 @@ async function socialSignup() {
     }
     state.profile.city = credentials.city;
     await updateSocialProfile(true);
+    await recordPrivacyPreferences(true);
     await loadSocialGroup();
     setSocialMessage("Cuenta creada. Ahora crea un grupo o introduce una invitación.", "success");
     renderSocialUi();
@@ -164,6 +171,7 @@ async function socialLogin() {
     if (!saveSocialSession(payload, credentials.email)) throw new Error("No se pudo iniciar sesión.");
     state.profile.city = credentials.city || state.profile.city;
     await updateSocialProfile(true);
+    await recordPrivacyPreferences(true);
     await loadSocialGroup();
     setSocialMessage("Sesión iniciada.", "success");
     renderSocialUi();
@@ -185,6 +193,10 @@ function readSocialCredentials() {
   }
   if (password.length < 6) {
     setSocialMessage("La contraseña debe tener al menos 6 caracteres.", "error");
+    return null;
+  }
+  if (!privacyReady()) {
+    setSocialMessage("Revisa primero la política y los permisos de privacidad.", "error");
     return null;
   }
   return { email, password, city };
@@ -216,6 +228,7 @@ function socialLogout() {
   socialLayer?.clearLayers();
   setSocialMessage("Sesión cerrada. Tus actividades locales siguen en el teléfono.");
   renderSocialUi();
+  renderPrivacyCenter();
 }
 
 async function updateSocialProfile(silent = false) {
@@ -228,7 +241,12 @@ async function updateSocialProfile(silent = false) {
         id: state.social.session.userId,
         display_name: state.profile.name || "Explorador",
         city: state.profile.city || "",
-        color: colorForUser(state.social.session.userId)
+        color: colorForUser(state.social.session.userId),
+        legal_version: state.privacy.acceptedVersion || null,
+        legal_accepted_at: state.privacy.acceptedAt || null,
+        adult_confirmed_at: state.privacy.adultConfirmed ? (state.privacy.acceptedAt || new Date().toISOString()) : null,
+        share_group_stats: Boolean(state.privacy.shareGroupStats),
+        ranking_enabled: Boolean(state.privacy.appearInRankings)
       }
     });
     if (!silent) setSocialMessage("Nombre actualizado para el grupo.", "success");
@@ -290,7 +308,9 @@ function normalizeReturnedGroup(value) {
 }
 
 function socialActivityPayload(activity) {
-  const points = state.social.shareExactRoutes ? simplifySocialPath(activity.points || []) : null;
+  const points = state.privacy.shareProtectedRoutes
+    ? protectedSocialPath(activity.points || [], state.privacy.routePrivacyMeters)
+    : null;
   return {
     user_id: state.social.session.userId,
     group_id: state.social.group.id,
@@ -304,27 +324,56 @@ function socialActivityPayload(activity) {
     new_linear_m: Math.max(0, Math.round(Number(activity.newLinearMeters) || 0)),
     conquest_points: Math.max(0, conquestPointsForActivity(activity)),
     route_type: activity.conquestType === "area" ? "area" : "line",
-    public_path: points?.length > 1 ? points : null
+    ranking_enabled: Boolean(state.privacy.appearInRankings),
+    public_path: points?.length > 1 ? points : null,
+    public_path_protected: Boolean(points?.length > 1)
   };
 }
 
-function simplifySocialPath(points) {
+function protectedSocialPath(points, privacyMeters = 500) {
   const valid = points.filter(point => Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lng)));
-  if (valid.length <= 400) return valid.map(point => [Number(point.lat.toFixed(6)), Number(point.lng.toFixed(6))]);
-  const step = Math.ceil(valid.length / 400);
-  return valid
-    .filter((_, index) => index % step === 0 || index === valid.length - 1)
-    .map(point => [Number(point.lat.toFixed(6)), Number(point.lng.toFixed(6))]);
+  if (valid.length < 2) return [];
+  const radius = Math.max(300, Math.min(800, Number(privacyMeters) || 500));
+  const total = routeDistance(valid);
+  if (total <= radius * 2 + 100) return [];
+
+  let startIndex = 0;
+  let fromStart = 0;
+  for (let index = 1; index < valid.length; index += 1) {
+    fromStart += haversine(valid[index - 1].lat, valid[index - 1].lng, valid[index].lat, valid[index].lng);
+    if (fromStart >= radius) {
+      startIndex = index;
+      break;
+    }
+  }
+
+  let endIndex = valid.length - 1;
+  let fromEnd = 0;
+  for (let index = valid.length - 1; index > 0; index -= 1) {
+    fromEnd += haversine(valid[index].lat, valid[index].lng, valid[index - 1].lat, valid[index - 1].lng);
+    if (fromEnd >= radius) {
+      endIndex = index - 1;
+      break;
+    }
+  }
+
+  const protectedPoints = valid.slice(startIndex, endIndex + 1);
+  if (protectedPoints.length < 2) return [];
+  const step = Math.max(1, Math.ceil(protectedPoints.length / 400));
+  return protectedPoints
+    .filter((_, index) => index % step === 0 || index === protectedPoints.length - 1)
+    .map(point => [Number(point.lat.toFixed(4)), Number(point.lng.toFixed(4))]);
 }
 
 async function syncActivitySocial(activity, silent = true) {
-  if (!hasSocialSession() || !state.social.group || activity?.demo) return false;
+  if (!hasSocialSession() || !state.social.group || activity?.demo || !state.privacy.shareGroupStats) return false;
   try {
     await socialRequest("/rest/v1/activities?on_conflict=user_id,client_activity_id", {
       method: "POST",
       prefer: "resolution=merge-duplicates,return=minimal",
       body: socialActivityPayload(activity)
     });
+    activity.socialSyncedAt = Date.now();
     state.social.lastSyncAt = Date.now();
     saveState();
     if (!silent) setSocialMessage("Actividad sincronizada.", "success");
@@ -340,6 +389,16 @@ async function syncAllSocialActivities(silent = false) {
     if (!silent) setSocialMessage("Entra en un grupo antes de sincronizar.", "error");
     return;
   }
+  if (!state.privacy.shareGroupStats) {
+    try {
+      await deleteAllRemoteActivities();
+      if (!silent) setSocialMessage("Tus estadísticas se han retirado del grupo.", "success");
+      await refreshSocialCommunity(true);
+    } catch (error) {
+      if (!silent) setSocialMessage(friendlySocialError(error), "error");
+    }
+    return;
+  }
   await withSocialBusy(async () => {
     const activities = state.activities.filter(activity => !activity.demo);
     let synced = 0;
@@ -353,13 +412,133 @@ async function syncAllSocialActivities(silent = false) {
   }, silent);
 }
 
-async function handleRouteSharingChange(event) {
-  state.social.shareExactRoutes = Boolean(event.currentTarget.checked);
+async function recordPrivacyPreferences(silent = false) {
+  if (!hasSocialSession()) return false;
+  try {
+    await updateSocialProfile(true);
+    await socialRequest("/rest/v1/consent_events", {
+      method: "POST",
+      prefer: "return=minimal",
+      body: {
+        user_id: state.social.session.userId,
+        legal_version: state.privacy.acceptedVersion || LEGAL_VERSION,
+        essential_service: privacyReady(),
+        share_group_stats: Boolean(state.privacy.shareGroupStats),
+        ranking_enabled: Boolean(state.privacy.appearInRankings),
+        protected_route: Boolean(state.privacy.shareProtectedRoutes),
+        privacy_radius_m: Number(state.privacy.routePrivacyMeters) || 500
+      }
+    });
+    if (!silent) setSocialMessage("Preferencias de privacidad guardadas.", "success");
+    return true;
+  } catch (error) {
+    if (!silent) setSocialMessage(friendlySocialError(error), "error");
+    return false;
+  }
+}
+
+async function handlePrivacyPreferencesChanged() {
+  renderSocialUi();
+  if (!hasSocialSession()) return;
+  await recordPrivacyPreferences(true);
+  if (state.privacy.shareGroupStats && state.social.group) await syncAllSocialActivities();
+  else if (state.privacy.shareGroupStats) setSocialMessage("Preferencias guardadas. Se aplicarán cuando entres en un grupo.", "success");
+  else {
+    await deleteAllRemoteActivities();
+    await refreshSocialCommunity(true);
+    setSocialMessage("Tus estadísticas se han retirado del grupo.", "success");
+  }
+}
+
+async function deleteSocialActivity(clientActivityId) {
+  if (!hasSocialSession()) return false;
+  const userId = encodeURIComponent(state.social.session.userId);
+  const activityId = encodeURIComponent(String(clientActivityId));
+  await socialRequest(`/rest/v1/activities?user_id=eq.${userId}&client_activity_id=eq.${activityId}`, {
+    method: "DELETE",
+    prefer: "return=minimal"
+  });
+  return true;
+}
+
+async function deleteAllRemoteActivities() {
+  if (!hasSocialSession()) return false;
+  const userId = encodeURIComponent(state.social.session.userId);
+  await socialRequest(`/rest/v1/activities?user_id=eq.${userId}`, {
+    method: "DELETE",
+    prefer: "return=minimal"
+  });
+  state.activities.forEach(activity => { delete activity.socialSyncedAt; });
   saveState();
-  setSocialMessage(state.social.shareExactRoutes
-    ? "Se compartirán tus trazados al sincronizar. Evita rutas que revelen tu domicilio."
+  socialActivities = socialActivities.filter(activity => activity.user_id !== state.social.session.userId);
+  renderSocialCommunity();
+  renderSocialMap();
+  return true;
+}
+
+async function exportSocialData() {
+  if (!hasSocialSession()) return false;
+  const userId = encodeURIComponent(state.social.session.userId);
+  const [profile, activities, consents] = await Promise.all([
+    socialRequest(`/rest/v1/profiles?select=*&id=eq.${userId}`),
+    socialRequest(`/rest/v1/activities?select=*&user_id=eq.${userId}&order=start_time.desc`),
+    socialRequest(`/rest/v1/consent_events?select=*&user_id=eq.${userId}&order=recorded_at.desc`)
+  ]);
+  const safeLocalState = {
+    ...state,
+    social: { ...state.social, session: null, group: null }
+  };
+  const payload = JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    app: "Territorio 360",
+    local: safeLocalState,
+    online: { profile, activities, consentEvents: consents }
+  }, null, 2);
+  downloadBlob(payload, `territorio-360-datos-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
+  return true;
+}
+
+async function deleteOnlineAccount() {
+  if (!hasSocialSession()) return;
+  if (!window.confirm("¿Eliminar definitivamente la cuenta, las actividades compartidas y los datos locales? Esta acción no se puede deshacer.")) return;
+  await withSocialBusy(async () => {
+    await socialRequest("/rest/v1/rpc/delete_my_account", { method: "POST", body: {} });
+    clearPositionWatch();
+    state = defaultState();
+    saveState();
+    socialActivities = [];
+    socialLayer?.clearLayers();
+    activeRoute?.setLatLngs([]);
+    renderAll();
+    setSocialMessage("Cuenta y datos eliminados.", "success");
+    window.setTimeout(() => showPrivacyOnboardingIfNeeded(true), 200);
+  });
+}
+
+async function handleRouteSharingChange(event) {
+  if (!state.privacy.shareGroupStats && event.currentTarget.checked) {
+    event.currentTarget.checked = false;
+    setSocialMessage("Activa primero las estadísticas del grupo.", "error");
+    return;
+  }
+  state.privacy.shareProtectedRoutes = Boolean(event.currentTarget.checked);
+  state.privacy.updatedAt = new Date().toISOString();
+  saveState();
+  renderPrivacyCenter();
+  setSocialMessage(state.privacy.shareProtectedRoutes
+    ? `Se ocultarán ${state.privacy.routePrivacyMeters} m al inicio y al final de cada trazado.`
     : "Trazados desactivados. Sincroniza para retirarlos del mapa del grupo.");
+  await recordPrivacyPreferences(true);
   await syncAllSocialActivities();
+}
+
+async function handleRoutePrivacyRadiusChange(event) {
+  state.privacy.routePrivacyMeters = [300, 500, 800].includes(Number(event.currentTarget.value))
+    ? Number(event.currentTarget.value)
+    : 500;
+  state.privacy.updatedAt = new Date().toISOString();
+  saveState();
+  if (state.privacy.shareProtectedRoutes) await syncAllSocialActivities();
 }
 
 async function refreshSocialCommunity(silent = false) {
@@ -368,7 +547,7 @@ async function refreshSocialCommunity(silent = false) {
   try {
     const since = encodeURIComponent(new Date(Date.now() - 30 * 86400000).toISOString());
     const groupId = encodeURIComponent(state.social.group.id);
-    const select = "id,user_id,mode,source,start_time,distance_m,new_area_sqm,new_linear_m,conquest_points,route_type,public_path,profiles!activities_user_id_fkey(display_name,city,color)";
+    const select = "id,user_id,mode,source,start_time,distance_m,new_area_sqm,new_linear_m,conquest_points,route_type,ranking_enabled,public_path,public_path_protected,profiles!activities_user_id_fkey(display_name,city,color)";
     const path = `/rest/v1/activities?select=${encodeURIComponent(select)}&group_id=eq.${groupId}&start_time=gte.${since}&order=start_time.desc&limit=250`;
     socialActivities = await socialRequest(path) || [];
     renderSocialCommunity();
@@ -398,7 +577,10 @@ function renderSocialUi() {
   $("#socialProjectUrl").value = state.social.config.url || "";
   $("#socialPublicKey").value = state.social.config.publicKey || "";
   $("#socialCity").value = state.profile.city || "";
-  $("#shareExactRoutes").checked = Boolean(state.social.shareExactRoutes);
+  $("#shareProtectedRoutes").checked = Boolean(state.privacy.shareProtectedRoutes);
+  $("#shareProtectedRoutes").disabled = !state.privacy.shareGroupStats;
+  $("#routePrivacyRadius").value = String(state.privacy.routePrivacyMeters || 500);
+  $("#routePrivacyRadius").disabled = !state.privacy.shareProtectedRoutes;
 
   const name = state.profile.name || "Explorador";
   $("#socialUserName").textContent = name;
@@ -412,6 +594,7 @@ function renderSocialUi() {
     : configured ? "Crea un grupo o introduce un código desde Perfil" : "Configura la beta desde tu perfil";
   $("#socialStatusBadge").textContent = inGroup ? "EN LÍNEA" : "LOCAL";
   $("#socialStatusBadge").classList.toggle("online", inGroup);
+  renderPrivacyCenter();
   renderSocialCommunity();
 }
 
@@ -454,6 +637,7 @@ function renderSocialCommunity() {
 function aggregateSocialRanking() {
   const people = new Map();
   socialActivities.forEach(activity => {
+    if (activity.ranking_enabled === false) return;
     const profile = socialProfileFor(activity);
     const current = people.get(activity.user_id) || {
       userId: activity.user_id,
@@ -494,7 +678,7 @@ function renderSocialMap() {
     if (points.length < 2) return;
     const profile = socialProfileFor(activity);
     const options = { color: profile.color, weight: 5, opacity: .78, lineCap: "round" };
-    const shape = activity.route_type === "area"
+    const shape = activity.route_type === "area" && !activity.public_path_protected
       ? L.polygon(points, { ...options, fillColor: profile.color, fillOpacity: .12 })
       : L.polyline(points, options);
     shape.bindPopup(`<strong>${escapeHtml(profile.name)}</strong>${escapeHtml(MODE_DATA[activity.mode]?.label || "Actividad")} · ${formatNumber((activity.distance_m || 0) / 1000, 2)} km`);
