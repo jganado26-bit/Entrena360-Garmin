@@ -7,7 +7,7 @@ const LOOP_MIN_DISTANCE_METERS = 500;
 const LOOP_CLOSE_DISTANCE_METERS = 100;
 const DEFAULT_CENTER = [41.5035, -5.7460];
 const MAX_TRACK_POINTS = 5000;
-const LEGAL_VERSION = "2026-08-22-beta-1";
+const LEGAL_VERSION = "2026-08-22-beta-2";
 
 const MODE_DATA = {
   run:  { label: "Correr",    icon: "🏃", color: "#c9f35b", multiplier: 1,    maxSpeed: 12 },
@@ -221,7 +221,7 @@ function legalConfig() {
   const configured = window.TERRITORIO_LEGAL_CONFIG || {};
   return {
     controllerName: String(configured.controllerName || "Responsable de la beta Territorio 360").trim(),
-    contact: String(configured.contact || "Contacto facilitado por el organizador del grupo.").trim(),
+    contact: String(configured.contact || "territorio360.app@gmail.com").trim(),
     ready: Boolean(configured.controllerName && configured.contact)
       && configured.controllerName !== "Responsable de la beta Territorio 360"
       && configured.contact !== "Contacto facilitado por el organizador del grupo."

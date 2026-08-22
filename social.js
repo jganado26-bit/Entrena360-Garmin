@@ -131,7 +131,7 @@ async function refreshSocialSession() {
 async function socialSignup() {
   if (!ensurePrivacyReady()) return;
   if (!legalConfigReady()) {
-    setSocialMessage("El organizador debe completar su identidad y contacto legal antes de abrir el registro online.", "error");
+    setSocialMessage("El correo de Territorio 360 ya está configurado. Falta indicar el nombre legal del responsable antes de abrir el registro online.", "error");
     return;
   }
   const credentials = readSocialCredentials();

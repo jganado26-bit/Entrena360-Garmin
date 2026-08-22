@@ -18,7 +18,7 @@ Documento operativo para preparar la prueba social conforme al RGPD y la LOPDGDD
 Editar `social-config.js` y sustituir:
 
 - `controllerName`: nombre y apellidos o denominación de la entidad responsable.
-- `contact`: correo electrónico o medio directo y verificable para ejercer derechos.
+- `contact`: `territorio360.app@gmail.com`, correo elegido para ejercer derechos; debe terminar de verificarse y probarse antes de invitar participantes.
 
 No debe abrirse el registro online mientras la política muestre los textos genéricos de prueba.
 
@@ -66,7 +66,8 @@ No debe abrirse el registro online mientras la política muestre los textos gen�
 
 ## Lista previa a la prueba
 
-- [ ] Responsable y contacto reales visibles en la aplicación.
+- [ ] Nombre real del responsable visible en la aplicación.
+- [ ] Correo `territorio360.app@gmail.com` verificado y probado desde una cuenta externa.
 - [ ] Proyecto de base de datos en región europea.
 - [ ] Contrato de encargado y subencargados revisados.
 - [ ] SQL actualizado ejecutado y políticas RLS verificadas con dos cuentas de prueba.

@@ -12,5 +12,5 @@ window.TERRITORIO_SOCIAL_DEFAULTS = {
 // Estos datos aparecen en la política de privacidad dentro de la aplicación.
 window.TERRITORIO_LEGAL_CONFIG = {
   controllerName: "Responsable de la beta Territorio 360",
-  contact: "Contacto facilitado por el organizador del grupo."
+  contact: "territorio360.app@gmail.com"
 };

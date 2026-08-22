@@ -2,7 +2,7 @@
 
 Aplicación Android y web instalable (PWA) de exploración activa inspirada en el geocaching. Convierte recorridos a pie, corriendo, nadando o en bicicleta en territorio visible sobre el mapa.
 
-## Versión 0.5.0 beta privada
+## Versión 0.5.1 beta privada
 
 - Registro GPS en tiempo real con distancia, duración, ritmo/velocidad y precisión.
 - Los circuitos de al menos 500 m que terminan a menos de 100 m del inicio delimitan y colorean la zona interior siguiendo el trazado real.
@@ -26,6 +26,7 @@ Aplicación Android y web instalable (PWA) de exploración activa inspirada en e
 - Descarga de datos, borrado individual de actividades y eliminación de la cuenta online.
 - Registro de preferencias en el backend, condiciones de uso y política de privacidad integradas.
 - Librería de mapas incluida en la APK para evitar cargar código desde un CDN externo.
+- Correo de contacto del proyecto: `territorio360.app@gmail.com`.
 
 Para activar la prueba social, sigue [BETA_SETUP.md](BETA_SETUP.md). Sin configurar el servidor, la aplicación conserva todo el funcionamiento individual.
 

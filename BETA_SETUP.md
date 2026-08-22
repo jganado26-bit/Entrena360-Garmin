@@ -9,7 +9,7 @@ Antes de permitir cuentas online, edita `social-config.js` y completa `TERRITORI
 - el nombre real de la persona o entidad responsable;
 - un correo o medio directo para ejercer los derechos de protección de datos.
 
-Mientras estos campos mantengan el texto genérico, la aplicación bloquea la creación de cuentas nuevas.
+El correo de contacto ya está configurado como `territorio360.app@gmail.com`. Mientras el nombre del responsable mantenga el texto genérico, la aplicación bloquea la creación de cuentas nuevas.
 
 ## 2. Crear el servidor de prueba
 
