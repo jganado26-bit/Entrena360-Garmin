@@ -341,6 +341,21 @@ input:focus, select:focus { border-color: var(--accent-2); box-shadow: 0 0 0 3px
 .source-status { padding: 5px 6px; border-radius: 7px; font-size: 8px; letter-spacing: .4px; }
 .source-status.ready { color: var(--accent); background: rgba(201, 243, 91, .1); }
 .source-status.planned { color: var(--warning); background: rgba(255, 202, 105, .1); }
+.health-connect-panel { margin: -2px 0 14px; padding: 13px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.025); }
+.health-connect-panel > p { margin: 0 0 11px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.health-connect-panel > p.success { color: var(--accent); }
+.health-connect-panel > p.error { color: #ff9a91; }
+.health-connect-actions { display: grid; grid-template-columns: 1fr 1.2fr; gap: 8px; align-items: center; }
+.health-connect-actions button { min-height: 42px; padding-inline: 10px; font-size: 10px; }
+.health-connect-actions .text-button { grid-column: 1 / -1; min-height: 30px; color: var(--accent-2); background: transparent; border: 0; }
+.health-connect-actions button:disabled { opacity: .45; cursor: default; }
+.health-session-list { display: grid; gap: 8px; margin-top: 12px; }
+.health-session { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 10px; border-radius: 13px; background: rgba(255,255,255,.035); }
+.health-session > div { display: grid; gap: 3px; min-width: 0; }
+.health-session strong { font-size: 11px; }
+.health-session small { color: var(--muted); font-size: 8px; line-height: 1.35; }
+.health-session button { min-height: 34px; padding: 7px 9px; font-size: 9px; }
+.health-session .imported { color: var(--accent); font-size: 8px; font-weight: 850; }
 .social-setup-card input { margin-bottom: 11px; }
 .two-button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .social-divider { display: flex; align-items: center; gap: 9px; margin: 15px 0; color: var(--muted); font-size: 9px; }

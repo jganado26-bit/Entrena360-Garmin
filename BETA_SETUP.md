@@ -55,5 +55,6 @@ Consulta también [`DATA_PROTECTION_BETA.md`](DATA_PROTECTION_BETA.md) y complet
 - Un usuario pertenece a un solo grupo.
 - Los rankings del grupo usan las actividades de los últimos 30 días.
 - No hay notificaciones, moderación ni recuperación automática de grupos.
-- Suunto, COROS, Garmin y otras marcas se prueban importando GPX o TCX; la sincronización automática requiere acuerdos/API del fabricante o Health Connect.
+- Garmin se puede probar mediante Garmin Connect y Health Connect: después de sincronizar el reloj, Territorio 360 busca las actividades al abrirse. Android puede exigir autorizar cada trazado GPS una vez.
+- Suunto, COROS y otras marcas pueden usar Health Connect si su aplicación comparte las rutas; GPX y TCX siguen disponibles como alternativa.
 - No está preparada para una comunidad pública ni para menores. La documentación y configuración deben revisarse profesionalmente antes de un uso abierto o comercial.

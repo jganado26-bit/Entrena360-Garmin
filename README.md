@@ -2,7 +2,7 @@
 
 Aplicación Android y web instalable (PWA) de exploración activa inspirada en el geocaching. Convierte recorridos a pie, corriendo, nadando o en bicicleta en territorio visible sobre el mapa.
 
-## Versión 0.5.1 beta privada
+## Versión 0.6.0 beta privada
 
 - Registro GPS en tiempo real con distancia, duración, ritmo/velocidad y precisión.
 - Los circuitos de al menos 500 m que terminan a menos de 100 m del inicio delimitan y colorean la zona interior siguiendo el trazado real.
@@ -13,7 +13,8 @@ Aplicación Android y web instalable (PWA) de exploración activa inspirada en e
 - Puntos personales por descubrir, hallazgos, misiones, niveles e insignias.
 - Importación de rutas GPX y TCX grabadas con Suunto, COROS, Garmin, Polar, Wahoo y otras marcas.
 - Detección del fabricante cuando aparece en el archivo y prevención de importaciones duplicadas.
-- Pantalla de fuentes preparada para integrar Health Connect como concentrador de relojes y aplicaciones Android.
+- Integración Android con Health Connect: detecta al abrir la app actividades compatibles sincronizadas desde Garmin Connect y otras aplicaciones.
+- Importación protegida de trazados de Health Connect con autorización individual cuando Android la exige y prevención de duplicados.
 - Modo de demostración sin salir de casa.
 - Copia y restauración de todos los datos.
 - Datos privados guardados en el dispositivo.
@@ -46,7 +47,7 @@ El flujo de GitHub Actions publica la rama `main` en GitHub Pages. En la configu
 
 ## Evolución prevista
 
-La versión actual permite probar cuentas, un grupo privado y clasificaciones compartidas con un backend Supabase propio. La siguiente fase conectará Health Connect con autorización explícita para cada ruta importada. Las conexiones automáticas directas con COROS, Suunto u otros fabricantes requieren registrar Territorio 360 como plataforma, completar sus procesos de acceso y guardar las credenciales en un backend seguro. Antes de abrir la parte social al público habrá que completar la identidad legal del responsable, revisar la EIPD, añadir moderación y reforzar la protección frente a falsificación de GPS.
+La versión actual permite probar Health Connect en modo local, además de cuentas, un grupo privado y clasificaciones compartidas con un backend Supabase propio. Android puede exigir autorización individual para leer un trazado creado por otra aplicación y Garmin Connect decide qué tipos de datos comparte. Las conexiones directas con Garmin, COROS, Suunto u otros fabricantes requieren registrar Territorio 360 como plataforma, superar sus procesos de acceso y guardar las credenciales en un backend seguro. Antes de abrir la parte social al público habrá que completar la identidad legal del responsable, revisar la EIPD, añadir moderación y reforzar la protección frente a falsificación de GPS.
 
 ## Mapas y privacidad
 

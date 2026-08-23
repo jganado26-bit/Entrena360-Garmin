@@ -7,7 +7,7 @@ const LOOP_MIN_DISTANCE_METERS = 500;
 const LOOP_CLOSE_DISTANCE_METERS = 100;
 const DEFAULT_CENTER = [41.5035, -5.7460];
 const MAX_TRACK_POINTS = 5000;
-const LEGAL_VERSION = "2026-08-22-beta-2";
+const LEGAL_VERSION = "2026-08-23-beta-3";
 
 const MODE_DATA = {
   run:  { label: "Correr",    icon: "🏃", color: "#c9f35b", multiplier: 1,    maxSpeed: 12 },
@@ -57,6 +57,8 @@ let pendingWaypointPosition = null;
 let demoTimer = null;
 let toastTimer = null;
 let rankingMode = "distance";
+let healthConnectSessions = [];
+let healthConnectConnected = false;
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -75,6 +77,7 @@ function init() {
   restoreActiveSession();
   registerServiceWorker();
   if (typeof initializeSocialBeta === "function") initializeSocialBeta();
+  initializeHealthConnect();
   renderPrivacyCenter();
   window.setTimeout(showPrivacyOnboardingIfNeeded, 120);
 }
@@ -318,6 +321,10 @@ function bindEvents() {
   $("#distanceRankingButton").addEventListener("click", () => setRankingMode("distance"));
   $("#conquestRankingButton").addEventListener("click", () => setRankingMode("conquest"));
   $("#connectionInfoButton").addEventListener("click", () => $("#connectionDialog").showModal());
+  $("#connectHealthConnectButton").addEventListener("click", requestHealthConnectPermissions);
+  $("#syncHealthConnectButton").addEventListener("click", syncHealthConnectNow);
+  $("#manageHealthConnectButton").addEventListener("click", openHealthConnectSettings);
+  $("#healthSessionList").addEventListener("click", handleHealthSessionClick);
   $("#openImportButton").addEventListener("click", () => {
     if (ensurePrivacyReady()) $("#importDialog").showModal();
   });
@@ -1229,6 +1236,209 @@ function saveProfile() {
 
 function updateGpxFileName() {
   $("#gpxFileName").textContent = $("#gpxFile").files[0]?.name || "Toca aquí para elegirlo";
+}
+
+function initializeHealthConnect() {
+  window.TerritorioHealthConnect = {
+    onStatus: handleHealthConnectStatus,
+    onSessions: handleHealthConnectSessions,
+    onRoute: handleHealthConnectRoute,
+    onError: handleHealthConnectError
+  };
+  if (window.TerritorioAndroid && typeof window.TerritorioAndroid.getStatus === "function") {
+    window.TerritorioAndroid.getStatus();
+  } else {
+    handleHealthConnectStatus(JSON.stringify({
+      code: "web",
+      connected: false,
+      message: "Health Connect está disponible únicamente en la aplicación Android."
+    }));
+  }
+}
+
+function requestHealthConnectPermissions() {
+  if (!ensurePrivacyReady()) return;
+  if (!window.TerritorioAndroid || typeof window.TerritorioAndroid.requestPermissions !== "function") {
+    showToast("Health Connect solo está disponible en la aplicación Android.");
+    return;
+  }
+  window.TerritorioAndroid.requestPermissions();
+}
+
+function syncHealthConnectNow() {
+  if (!ensurePrivacyReady()) return;
+  if (!window.TerritorioAndroid || typeof window.TerritorioAndroid.syncNow !== "function") return;
+  window.TerritorioAndroid.syncNow();
+}
+
+function openHealthConnectSettings() {
+  if (!window.TerritorioAndroid || typeof window.TerritorioAndroid.openSettings !== "function") {
+    showToast("Gestiona Health Connect desde los ajustes de Android.");
+    return;
+  }
+  window.TerritorioAndroid.openSettings();
+}
+
+function handleHealthConnectStatus(payloadText) {
+  try {
+    const payload = typeof payloadText === "string" ? JSON.parse(payloadText) : payloadText;
+    healthConnectConnected = Boolean(payload.connected);
+    const status = $("#healthConnectSourceStatus");
+    const message = $("#healthConnectMessage");
+    const connectButton = $("#connectHealthConnectButton");
+    const syncButton = $("#syncHealthConnectButton");
+    status.textContent = healthConnectConnected ? "CONECTADO" : payload.code === "unavailable" ? "NO DISPONIBLE" : "CONECTAR";
+    status.classList.toggle("ready", healthConnectConnected);
+    status.classList.toggle("planned", !healthConnectConnected);
+    message.textContent = payload.message || "Estado de Health Connect actualizado.";
+    message.classList.toggle("success", healthConnectConnected);
+    message.classList.toggle("error", ["unavailable", "update-required", "permission-denied"].includes(payload.code));
+    connectButton.textContent = healthConnectConnected ? "Conectado" : "Conectar";
+    connectButton.disabled = healthConnectConnected;
+    syncButton.disabled = !healthConnectConnected;
+  } catch {
+    handleHealthConnectError(JSON.stringify({ message: "No se pudo interpretar el estado de Health Connect." }));
+  }
+}
+
+function handleHealthConnectSessions(payloadText) {
+  try {
+    const parsed = typeof payloadText === "string" ? JSON.parse(payloadText) : payloadText;
+    healthConnectSessions = Array.isArray(parsed) ? parsed : [];
+    let importedCount = 0;
+    let lastImported = null;
+    if (privacyReady()) {
+      healthConnectSessions.forEach(session => {
+        if (session.routeState !== "data" || !Array.isArray(session.points) || session.points.length < 2) return;
+        if (importHealthConnectRoute(session, { silent: true, render: false })) {
+          importedCount += 1;
+          lastImported = session;
+        }
+      });
+    }
+    if (importedCount) {
+      renderAll();
+      focusImportedHealthRoute(lastImported);
+      showToast(`${importedCount} ${importedCount === 1 ? "actividad importada" : "actividades importadas"} desde Health Connect.`);
+    }
+    renderHealthConnectSessions();
+  } catch {
+    handleHealthConnectError(JSON.stringify({ message: "Health Connect devolvió actividades no válidas." }));
+  }
+}
+
+function handleHealthConnectRoute(payloadText) {
+  try {
+    const session = typeof payloadText === "string" ? JSON.parse(payloadText) : payloadText;
+    const index = healthConnectSessions.findIndex(item => item.id === session.id);
+    if (index >= 0) healthConnectSessions[index] = session;
+    else healthConnectSessions.unshift(session);
+    if (importHealthConnectRoute(session, { silent: false, render: true })) focusImportedHealthRoute(session);
+    renderHealthConnectSessions();
+  } catch {
+    handleHealthConnectError(JSON.stringify({ message: "No se pudo importar el trazado autorizado." }));
+  }
+}
+
+function handleHealthConnectError(payloadText) {
+  let message = "No se pudo completar la operación con Health Connect.";
+  try {
+    const payload = typeof payloadText === "string" ? JSON.parse(payloadText) : payloadText;
+    if (payload?.message) message = payload.message;
+  } catch { /* Se conserva el mensaje genérico. */ }
+  const element = $("#healthConnectMessage");
+  if (element) {
+    element.textContent = message;
+    element.classList.add("error");
+  }
+  showToast(message);
+}
+
+function handleHealthSessionClick(event) {
+  const button = event.target.closest("[data-health-route]");
+  if (!button) return;
+  if (!ensurePrivacyReady()) return;
+  const session = healthConnectSessions.find(item => item.id === button.dataset.healthRoute);
+  if (!session) return;
+  if (session.routeState === "data") {
+    if (importHealthConnectRoute(session, { silent: false, render: true })) focusImportedHealthRoute(session);
+    renderHealthConnectSessions();
+    return;
+  }
+  if (window.TerritorioAndroid && typeof window.TerritorioAndroid.requestRoute === "function") {
+    window.TerritorioAndroid.requestRoute(session.id);
+  }
+}
+
+function importHealthConnectRoute(session, { silent = false, render = true } = {}) {
+  if (!privacyReady()) return false;
+  const rawPoints = Array.isArray(session.points) ? session.points : [];
+  const points = limitTrackPoints(rawPoints.map(point => ({
+    lat: Number(point.lat),
+    lng: Number(point.lng),
+    time: Number(point.time),
+    accuracy: Number(point.accuracy)
+  })).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng)));
+  if (points.length < 2) {
+    if (!silent) showToast("Esta actividad no incluye un trazado GPS utilizable.");
+    return false;
+  }
+  const importKey = `health-connect-${session.id}`;
+  if (state.activities.some(activity => activity.importKey === importKey)) {
+    if (!silent) showToast("Esta actividad de Health Connect ya está importada.");
+    return false;
+  }
+  const mode = MODE_DATA[session.mode] ? session.mode : "run";
+  const environment = mode === "swim" ? "water" : "country";
+  const source = String(session.sourceApp || "").toLowerCase().includes("garmin") ? "garmin" : "health-connect";
+  const activity = createActivityFromRoute(points, mode, environment, source, importKey);
+  if (render) renderAll();
+  if (!silent) {
+    const result = activity.conquestType === "area"
+      ? `${formatArea(activity.newAreaSqm)} nuevos`
+      : `${formatNumber(activity.newLinearMeters / 1000, 2)} km lineales nuevos`;
+    showToast(`${sourceLabel(activity)} importado · ${result}`);
+  }
+  if (typeof syncActivitySocial === "function") syncActivitySocial(activity);
+  return true;
+}
+
+function focusImportedHealthRoute(session) {
+  const points = Array.isArray(session?.points) ? session.points : [];
+  if (points.length < 2) return;
+  activeRoute.setLatLngs(points.map(point => [Number(point.lat), Number(point.lng)]));
+  const bounds = activeRoute.getBounds();
+  if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 160], maxZoom: 17 });
+}
+
+function renderHealthConnectSessions() {
+  const list = $("#healthSessionList");
+  if (!list) return;
+  if (!healthConnectSessions.length) {
+    list.innerHTML = "";
+    return;
+  }
+  list.innerHTML = healthConnectSessions.slice(0, 12).map(session => {
+    const mode = MODE_DATA[session.mode] || MODE_DATA.run;
+    const importKey = `health-connect-${session.id}`;
+    const imported = state.activities.some(activity => activity.importKey === importKey);
+    const distance = Number(session.distanceMeters || 0) > 0 ? `${formatNumber(Number(session.distanceMeters) / 1000, 2)} km · ` : "";
+    const detail = imported
+      ? "Ya incorporada al territorio"
+      : session.routeState === "consent"
+        ? "Android necesita tu permiso para este trazado"
+        : session.routeState === "data"
+          ? "Trazado disponible para importar"
+          : "La aplicación de origen no compartió el GPS";
+    const action = imported
+      ? '<span class="imported">IMPORTADA</span>'
+      : session.routeState === "consent"
+        ? `<button class="secondary-button" type="button" data-health-route="${escapeHtml(session.id)}">Autorizar ruta</button>`
+        : session.routeState === "data"
+          ? `<button class="secondary-button" type="button" data-health-route="${escapeHtml(session.id)}">Importar</button>`
+          : "";
+    return `<article class="health-session"><div><strong>${mode.icon} ${escapeHtml(session.title || mode.label)}</strong><small>${distance}${formatDate(session.startTime)} · ${detail}</small></div>${action}</article>`;
+  }).join("");
 }
 
 async function handleGpxImport(event) {

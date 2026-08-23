@@ -5,12 +5,13 @@ Documento operativo para preparar la prueba social conforme al RGPD y la LOPDGDD
 ## Decisiones de diseño aplicadas
 
 - La beta está limitada a personas adultas.
-- El GPS completo se guarda localmente y no se publica por defecto.
+- El GPS completo, incluido el importado desde Health Connect, se guarda localmente y no se publica por defecto.
 - Las estadísticas del grupo, los rankings y el trazado protegido tienen controles separados.
 - El trazado compartido elimina automáticamente entre 300 y 800 metros al inicio y al final, según la preferencia elegida.
 - Los recorridos cortos no se comparten si no queda un tramo suficiente tras aplicar la zona de privacidad.
 - El usuario puede exportar sus datos, eliminar actividades, retirar las opciones sociales y borrar la cuenta online.
-- No se incorporan datos cardíacos, respiratorios ni diagnósticos de salud en esta fase.
+- Health Connect solo se usa para leer sesiones deportivas, distancia y los trazados GPS que autorice el usuario.
+- No se solicitan ni incorporan datos cardíacos, respiratorios, de sueño ni diagnósticos de salud en esta fase.
 - No se incluyen publicidad ni analítica de comportamiento.
 
 ## Datos que debe completar el responsable antes de distribuir la beta social
@@ -38,7 +39,7 @@ No debe abrirse el registro online mientras la política muestre los textos gen�
 
 ## Evaluación de impacto: puntos que deben documentarse
 
-1. Flujo completo del dato desde el GPS o archivo del reloj hasta su eliminación.
+1. Flujo completo del dato desde el GPS, Health Connect o archivo del reloj hasta su eliminación.
 2. Necesidad y proporcionalidad de cada campo almacenado.
 3. Riesgo de revelar domicilio, hábitos, identidad, salud o ausencia del hogar.
 4. Riesgo de acceso entre grupos, suplantación o código de invitación filtrado.

@@ -225,8 +225,17 @@
           <div class="card-title"><h2>Reloj y aplicaciones</h2><span class="file-chip">FUENTES</span></div>
           <p class="section-help">El recorrido puede grabarse en Territorio 360, en tu reloj o en otra aplicación. La conquista se calcula igual para todas las fuentes.</p>
           <div class="source-list">
-            <div class="source-row"><span class="source-icon">♡</span><div><strong>Health Connect</strong><small>Android · integración planificada</small></div><b class="source-status planned">SIGUIENTE</b></div>
+            <div class="source-row"><span class="source-icon">HC</span><div><strong>Health Connect</strong><small id="healthConnectSourceDetail">Garmin Connect y aplicaciones Android</small></div><b class="source-status planned" id="healthConnectSourceStatus">COMPROBAR</b></div>
             <div class="source-row"><span class="source-icon">GPS</span><div><strong>Archivo del reloj</strong><small>GPX y TCX · Suunto, COROS, Garmin, Polar y otros</small></div><b class="source-status ready">LISTO</b></div>
+          </div>
+          <div class="health-connect-panel">
+            <p id="healthConnectMessage" role="status" aria-live="polite">Comprobando si Health Connect está disponible…</p>
+            <div class="health-connect-actions">
+              <button class="primary-button" id="connectHealthConnectButton" type="button">Conectar</button>
+              <button class="secondary-button" id="syncHealthConnectButton" type="button" disabled>Buscar actividades</button>
+              <button class="text-button" id="manageHealthConnectButton" type="button">Gestionar permisos</button>
+            </div>
+            <div class="health-session-list" id="healthSessionList"></div>
           </div>
           <button class="secondary-button full-button" id="connectionInfoButton" type="button">Cómo conectar mi dispositivo</button>
         </div>
@@ -345,15 +354,15 @@
       <h2>Del reloj al territorio</h2>
       <ol class="connection-steps">
         <li><b>1</b><span><strong>Graba el entrenamiento</strong><small>Con tu reloj, ciclocomputador o aplicación habitual.</small></span></li>
-        <li><b>2</b><span><strong>Sincroniza la aplicación del fabricante</strong><small>En Android, podrá compartir la sesión mediante Health Connect.</small></span></li>
-        <li><b>3</b><span><strong>Autoriza o importa la ruta</strong><small>Health Connect requiere tu aprobación. También puedes importar GPX o TCX directamente.</small></span></li>
+        <li><b>2</b><span><strong>Sincroniza Garmin Connect</strong><small>Al volver con el reloj, Garmin Connect enviará a Health Connect los datos compatibles.</small></span></li>
+        <li><b>3</b><span><strong>Abre Territorio 360</strong><small>La app busca actividades automáticamente. Android puede pedir una autorización para cada trazado GPS.</small></span></li>
       </ol>
       <div class="brand-help">
         <p><strong>Suunto</strong><span>Entrenamiento → menú de tres puntos → exportar GPX.</span></p>
         <p><strong>COROS</strong><span>Actividad → menú → Export Data → GPX o TCX.</span></p>
         <p><strong>Otras marcas</strong><span>Exporta el entrenamiento con ruta GPS en GPX o TCX.</span></p>
       </div>
-      <p class="dialog-note">La conexión automática llegará mediante Health Connect y APIs autorizadas. El importador evita que el mismo archivo vuelva a sumar si se selecciona más de una vez.</p>
+      <p class="dialog-note">Health Connect evita que tengas que llevar el móvil durante la actividad. Si Garmin no comparte el trazado GPS de una sesión, todavía podrás importar su GPX o TCX. Una misma actividad nunca sumará dos veces.</p>
       <button class="primary-button full-button" value="close" type="submit">Entendido</button>
     </form>
   </dialog>
@@ -379,16 +388,16 @@
   <dialog id="privacyPolicyDialog" class="app-dialog legal-dialog">
     <form method="dialog">
       <button class="dialog-close" value="close" aria-label="Cerrar" type="submit">×</button>
-      <span class="eyebrow">Versión beta · 22/08/2026</span>
+      <span class="eyebrow">Versión beta · 23/08/2026</span>
       <h2>Política de privacidad</h2>
       <div class="legal-copy">
         <section><h3>1. Responsable y contacto</h3><p><strong id="legalControllerName">Responsable de la beta Territorio 360</strong><br><span id="legalControllerContact">territorio360.app@gmail.com</span></p></section>
-        <section><h3>2. Datos tratados</h3><p>Alias, correo de cuenta, ciudad aproximada, modalidad deportiva, fechas, distancia, puntos, parcelas conquistadas, registro de preferencias y, solo si se autoriza, un trazado protegido. El recorrido GPS completo permanece local por defecto.</p></section>
-        <section><h3>3. Finalidades y base jurídica</h3><p>La cuenta, el registro deportivo y el cálculo de conquistas se utilizan para prestar el servicio solicitado. Compartir estadísticas, aparecer en rankings y mostrar un trazado son opciones separadas basadas en decisiones revocables del usuario.</p></section>
+        <section><h3>2. Datos tratados</h3><p>Alias, correo de cuenta, ciudad aproximada, modalidad deportiva, fechas, distancia, puntos, parcelas conquistadas y preferencias. Si conectas Health Connect, la app solicita acceso de lectura a sesiones deportivas, distancia y trazados autorizados. El GPS completo permanece local por defecto.</p></section>
+        <section><h3>3. Finalidades y base jurídica</h3><p>Los permisos de Health Connect se utilizan únicamente para importar actividades elegidas y calcular conquistas en este dispositivo. Puedes retirarlos desde Health Connect. La cuenta y las funciones sociales siguen siendo opcionales y permanecen desactivadas en la prueba local.</p></section>
         <section><h3>4. Destinatarios</h3><p>Los miembros del grupo privado pueden ver los datos que cada usuario haya elegido compartir. El alojamiento online actúa como proveedor técnico. El mapa consulta teselas de OpenStreetMap, que puede recibir la dirección IP necesaria para responder.</p></section>
         <section><h3>5. Conservación</h3><p>Los datos locales se conservan hasta que el usuario los elimina. Las estadísticas online se retiran al desactivar la opción de compartir. Los registros de las decisiones de privacidad se conservan mientras exista la cuenta. Las copias de seguridad del proveedor pueden tardar un periodo limitado en rotarse.</p></section>
         <section><h3>6. Derechos</h3><p>Desde esta aplicación se pueden descargar datos, retirar opciones, borrar actividades y solicitar la eliminación de la cuenta. También se puede ejercer acceso, rectificación, supresión, oposición, limitación y portabilidad contactando con el responsable, y reclamar ante la Agencia Española de Protección de Datos.</p></section>
-        <section><h3>7. Seguridad y menores</h3><p>La beta utiliza conexiones cifradas, control de acceso por usuario y grupos por invitación. No admite menores de 18 años ni trata todavía datos médicos o de salud.</p></section>
+        <section><h3>7. Seguridad y menores</h3><p>La beta utiliza conexiones cifradas y permisos administrados por Android. Solo lee los datos deportivos necesarios: no solicita frecuencia cardíaca, respiración, sueño ni datos médicos. No admite menores de 18 años.</p></section>
       </div>
       <button class="primary-button full-button" value="close" type="submit">Cerrar</button>
     </form>
