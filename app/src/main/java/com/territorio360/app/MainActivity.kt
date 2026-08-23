@@ -165,6 +165,7 @@ class MainActivity : ComponentActivity() {
                             "text/csv",
                             "text/plain"
                         )
+                    )
                     putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
                 }
                 return try {
@@ -411,7 +412,7 @@ class MainActivity : ComponentActivity() {
         try {
             startActivity(HealthConnectClient.getHealthConnectManageDataIntent(this))
         } catch (_: Exception) {
-            val launchIntent = packageManager.getLaunchIntentForPackage(HealthConnectClient.DEFAULT_PROVIDER_PACKAGE_NAME)
+            val launchIntent = packageManager.getLaunchIntentForPackage(HEALTH_CONNECT_PACKAGE)
             if (launchIntent != null) startActivity(launchIntent)
             else sendHealthError("No se pudo abrir Health Connect.")
         }
@@ -485,6 +486,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val APP_URL = "https://appassets.androidplatform.net/assets/index.html"
+        private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
         private const val FILE_CHOOSER_REQUEST = 1001
         private const val LOCATION_PERMISSION_REQUEST = 1002
         private const val AUTO_SYNC_INTERVAL_MS = 60_000L
