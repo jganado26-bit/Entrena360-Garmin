@@ -31,6 +31,15 @@ Aplicación Android y web instalable (PWA) de exploración activa inspirada en e
 
 Para activar la prueba social, sigue [BETA_SETUP.md](BETA_SETUP.md). Sin configurar el servidor, la aplicación conserva todo el funcionamiento individual.
 
+## Probar un reloj Garmin sin llevar el móvil
+
+1. Graba la actividad únicamente con el reloj.
+2. Al terminar, sincroniza el reloj con Garmin Connect y activa su conexión con Health Connect.
+3. Abre **Perfil → Reloj y aplicaciones** en Territorio 360 y concede acceso a actividad y distancia.
+4. La aplicación buscará las sesiones recientes al abrirse. Si Android protege el trazado, pulsa **Autorizar ruta** una vez para incorporarlo al mapa.
+
+Territorio 360 no solicita pulso, sueño ni otros datos de salud. Si Garmin Connect no comparte el GPS de una sesión concreta, se puede importar su GPX o TCX como alternativa.
+
 ## Probar en local
 
 La geolocalización necesita un contexto seguro. `localhost` se considera seguro para desarrollo:
